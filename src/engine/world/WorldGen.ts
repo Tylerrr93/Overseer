@@ -4,7 +4,7 @@
 //  Generates on demand as the player explores.
 // ============================================================
 
-import type { Chunk, Tile, TileType } from "@types/state";
+import type { Chunk, Tile, TileType } from "@t/state";
 import { GameConfig } from "@engine/core/GameConfig";
 import { sm } from "@engine/core/StateManager";
 import { bus } from "@engine/core/EventBus";

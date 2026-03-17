@@ -4,7 +4,7 @@
 //  Add a new building: add one object below.  No engine edits.
 // ============================================================
 
-import type { DoodadDef } from "@types/content";
+import type { DoodadDef } from "@t/content";
 
 export const DOODADS: DoodadDef[] = [
   // ── Personal Fabricator (player-carried tool, 1×1) ───────

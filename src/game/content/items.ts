@@ -5,7 +5,7 @@
 //  Zero engine changes required.
 // ============================================================
 
-import type { ItemDef } from "@types/content";
+import type { ItemDef } from "@t/content";
 
 export const ITEMS: ItemDef[] = [
   // ── Raw materials ────────────────────────────────────────

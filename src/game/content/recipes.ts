@@ -4,7 +4,7 @@
 //  Add a new recipe: add one object to the array below.
 // ============================================================
 
-import type { RecipeDef } from "@types/content";
+import type { RecipeDef } from "@t/content";
 
 export const RECIPES: RecipeDef[] = [
   // ── Personal Fabricator (early-game, player-operated) ────

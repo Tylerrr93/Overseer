@@ -44,7 +44,12 @@ if (!loaded) {
 
 // ── 5. Demo: place a smelter so you can see tick in action ───
 if (!loaded) {
-  const { v4: uuidv4 } = await import("https://cdn.jsdelivr.net/npm/uuid@9/+esm") as { v4: () => string };
+  // Simple UUID v4 — no external dependency needed
+  const uuidv4 = (): string =>
+    "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
 
   const smelterDef = registry.getDoodad("basic_smelter");
   sm.addDoodad({
