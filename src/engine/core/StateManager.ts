@@ -69,6 +69,12 @@ export class StateManager {
         return false;
       }
       this.state = parsed;
+      // ── Migrate saves from earlier phases ──────────────────
+      const p = this.state.player;
+      if (!p.cursorWorldPos)               p.cursorWorldPos    = { x: 0, y: 0 };
+      if (p.placementRotation === undefined) p.placementRotation = 0;
+      if (!this.state.belts)               (this.state as GameState).belts = {};
+      // ───────────────────────────────────────────────────────
       console.info("[StateManager] Game loaded.");
       return true;
     } catch (e) {
@@ -116,6 +122,19 @@ export class StateManager {
     return Object.values(this.state.doodads);
   }
 
+  // ── Belt helpers ──────────────────────────────────────────
+
+  /** Find a belt whose origin tile matches (tx, ty), or undefined. */
+  getBeltAt(tx: number, ty: number): import("@t/state").BeltSegment | undefined {
+    return Object.values(this.state.belts).find(
+      b => b.origin.tx === tx && b.origin.ty === ty
+    );
+  }
+
+  addBelt(belt: import("@t/state").BeltSegment): void {
+    this.state.belts[belt.id] = belt;
+  }
+
   // ── Player helpers ────────────────────────────────────────
 
   movePlayer(x: number, y: number): void {
@@ -125,8 +144,13 @@ export class StateManager {
   }
 
   updateCursorWorld(x: number, y: number): void {
-    this.state.player.cursorWorldPos.x = x;
-    this.state.player.cursorWorldPos.y = y;
+    // Guard against stale saves loaded before cursorWorldPos existed
+    if (!this.state.player.cursorWorldPos) {
+      this.state.player.cursorWorldPos = { x, y };
+    } else {
+      this.state.player.cursorWorldPos.x = x;
+      this.state.player.cursorWorldPos.y = y;
+    }
   }
 
   /** Add items to player inventory. Returns overflow qty. */

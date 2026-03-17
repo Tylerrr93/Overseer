@@ -10,6 +10,7 @@ import { sm }       from "@engine/core/StateManager";
 import { registry } from "@engine/core/Registry";
 import { GameConfig } from "@engine/core/GameConfig";
 import type { Tile } from "@t/state";
+import { DIR_DELTA } from "@engine/utils/portUtils";
 
 // BuildSystem is imported as a type-only interface to avoid circular deps.
 // Renderer only calls .lastPlacementValid and .validate() on it.
@@ -77,6 +78,8 @@ export class Renderer {
 
     this.renderTiles();
     this.renderDoodads();
+    this.renderBelts();
+    this.renderBeltItems();
     this.renderPlayer();
 
     const inBuildMode = sm.state.player.heldItemId !== null;
@@ -153,6 +156,82 @@ export class Renderer {
   }
 
   // ── Player ────────────────────────────────────────────────
+
+  // Belt direction chevron arrows
+  private renderBelts(): void {
+    const { ctx } = this;
+
+    for (const belt of Object.values(sm.state.belts)) {
+      const wx = belt.origin.tx * T;
+      const wy = belt.origin.ty * T;
+      if (!this.inView(wx, wy, T, T)) continue;
+
+      ctx.fillStyle = "#4a3a1a";
+      ctx.fillRect(wx + 1, wy + 1, T - 2, T - 2);
+
+      const cx2 = wx + T / 2;
+      const cy2 = wy + T / 2;
+      const arm = T * 0.22;
+
+      ctx.strokeStyle = "#c8a050";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+
+      switch (belt.direction) {
+        case "N":
+          ctx.moveTo(cx2 - arm, cy2 + arm); ctx.lineTo(cx2, cy2 - arm); ctx.lineTo(cx2 + arm, cy2 + arm);
+          break;
+        case "E":
+          ctx.moveTo(cx2 - arm, cy2 - arm); ctx.lineTo(cx2 + arm, cy2); ctx.lineTo(cx2 - arm, cy2 + arm);
+          break;
+        case "S":
+          ctx.moveTo(cx2 - arm, cy2 - arm); ctx.lineTo(cx2, cy2 + arm); ctx.lineTo(cx2 + arm, cy2 - arm);
+          break;
+        case "W":
+          ctx.moveTo(cx2 + arm, cy2 - arm); ctx.lineTo(cx2 - arm, cy2); ctx.lineTo(cx2 + arm, cy2 + arm);
+          break;
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Belt item interpolation rendering
+  private renderBeltItems(): void {
+    const { ctx } = this;
+    const ITEM_SIZE = T * 0.38;
+
+    for (const belt of Object.values(sm.state.belts)) {
+      if (belt.items.length === 0) continue;
+
+      const wx = belt.origin.tx * T;
+      const wy = belt.origin.ty * T;
+      if (!this.inView(wx, wy, T, T)) continue;
+
+      const delta  = DIR_DELTA[belt.direction];
+      const startX = wx + T / 2;
+      const startY = wy + T / 2;
+      const endX   = startX + delta.dx * T;
+      const endY   = startY + delta.dy * T;
+
+      for (const entry of belt.items) {
+        const p  = entry.progress;
+        const ix = startX + (endX - startX) * p;
+        const iy = startY + (endY - startY) * p;
+
+        const def   = registry.findItem(entry.stack.itemId);
+        const color = def?.sprite.startsWith("#") ? def.sprite : "#aaa";
+
+        ctx.fillStyle = color;
+        ctx.fillRect(ix - ITEM_SIZE / 2, iy - ITEM_SIZE / 2, ITEM_SIZE, ITEM_SIZE);
+
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(ix - ITEM_SIZE / 2, iy - ITEM_SIZE / 2, ITEM_SIZE, ITEM_SIZE);
+      }
+    }
+  }
 
   private renderPlayer(): void {
     const { ctx } = this;

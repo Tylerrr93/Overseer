@@ -1,17 +1,17 @@
 // ============================================================
 //  src/engine/core/GameLoop.ts
-//  Drives the update/render cycle.
 // ============================================================
 
-import type { Renderer }     from "@engine/rendering/Renderer";
-import type { DoodadSystem } from "@engine/systems/DoodadSystem";
-import type { PlayerSystem } from "@engine/systems/PlayerSystem";
-import type { BuildSystem }  from "@engine/systems/BuildSystem";
-import type { WorldGen }     from "@engine/world/WorldGen";
+import type { Renderer }         from "@engine/rendering/Renderer";
+import type { DoodadSystem }     from "@engine/systems/DoodadSystem";
+import type { PlayerSystem }     from "@engine/systems/PlayerSystem";
+import type { BuildSystem }      from "@engine/systems/BuildSystem";
+import type { ExtractorSystem }  from "@engine/systems/ExtractorSystem";
+import type { BeltSystem }       from "@engine/systems/BeltSystem";
+import type { WorldGen }         from "@engine/world/WorldGen";
 import { GameConfig } from "./GameConfig";
 import { sm } from "./StateManager";
 
-// Minimal interface so GameLoop doesn't import @game
 interface Tickable { tick(): void; }
 
 const MAX_DELTA_MS = 200;
@@ -20,21 +20,19 @@ export class GameLoop {
   private running = false;
   private lastTs  = 0;
   private rafId   = 0;
-
   private buildUI: Tickable | null = null;
 
   constructor(
-    private readonly renderer:     Renderer,
-    private readonly playerSystem: PlayerSystem,
-    private readonly doodadSystem: DoodadSystem,
-    private readonly buildSystem:  BuildSystem,
-    private readonly worldGen:     WorldGen,
+    private readonly renderer:        Renderer,
+    private readonly playerSystem:    PlayerSystem,
+    private readonly doodadSystem:    DoodadSystem,
+    private readonly buildSystem:     BuildSystem,
+    private readonly extractorSystem: ExtractorSystem,
+    private readonly beltSystem:      BeltSystem,
+    private readonly worldGen:        WorldGen,
   ) {}
 
-  /** Wire in the BuildUI so the HUD label updates each frame. */
-  setBuildUI(ui: Tickable): void {
-    this.buildUI = ui;
-  }
+  setBuildUI(ui: Tickable): void { this.buildUI = ui; }
 
   start(): void {
     if (this.running) return;
@@ -57,20 +55,32 @@ export class GameLoop {
     const delta    = Math.min(rawDelta, MAX_DELTA_MS);
     this.lastTs    = ts;
 
-    // ── Update phase ────────────────────────────────────────
+    // ── Update order matters ─────────────────────────────────
+    // 1. Player input + movement
     this.playerSystem.update(delta);
 
+    // 2. Terrain generation around player
     const { x, y } = sm.state.player.pos;
     this.worldGen.ensureChunksAround(x, y, GameConfig.RENDER_CHUNK_RADIUS);
 
+    // 3. Build mode cursor / ghost validation
     this.buildSystem.update(delta);
+
+    // 4. Extractors mine ore → fill their output slots
+    this.extractorSystem.update(delta);
+
+    // 5. Machines craft + push output slots → adjacent belts
     this.doodadSystem.update(delta);
 
+    // 6. Belts advance items + hand off to next segment
+    this.beltSystem.update(delta);
+
+    // 7. UI tick (HUD label)
     this.buildUI?.tick();
 
     sm.state.tickCount++;
 
-    // ── Render phase ────────────────────────────────────────
+    // ── Render ───────────────────────────────────────────────
     this.renderer.render();
 
     this.rafId = requestAnimationFrame(ts => this.tick(ts));

@@ -22,6 +22,10 @@ import { registry } from "@engine/core/Registry";
 import { sm } from "@engine/core/StateManager";
 import { bus } from "@engine/core/EventBus";
 import { GameConfig } from "@engine/core/GameConfig";
+import { getAbsolutePort } from "@engine/utils/portUtils";
+
+// Max items on a single belt segment before it's considered full
+const BELT_MAX_ITEMS = 4;
 
 export class DoodadSystem {
   /**
@@ -48,6 +52,11 @@ export class DoodadSystem {
       doodad.tickAccumulatorMs -= interval;
       this.runTick(doodad, def, interval);
     }
+
+    // Push/pull belt IO every frame (not just on tick intervals)
+    // so items flow even while a machine is mid-cycle or idle.
+    this.pushOutputsToBelts(doodad, def);
+    this.pullInputsFromBelts(doodad, def);
   }
 
   private runTick(doodad: DoodadState, def: DoodadDef, tickMs: number): void {
@@ -91,6 +100,7 @@ export class DoodadSystem {
       // If output slots are full, stall — crafting stays "done"
       // until room opens up. This is intentional backpressure.
     }
+
   }
 
   // ── Recipe resolution ─────────────────────────────────────
@@ -177,6 +187,102 @@ export class DoodadSystem {
       if (toPlace > 0) return false;
     }
     return true;
+  }
+
+  // ── Belt output pushing ──────────────────────────────────
+
+  /**
+   * For each output port on this doodad, check if there's a belt
+   * on the adjacent tile. If so, and the belt has room, transfer
+   * one item per tick from the output slot to the belt.
+   */
+  private pushOutputsToBelts(doodad: DoodadState, def: DoodadDef): void {
+    // Rate-limit: only push once per doodad tick interval, not every frame.
+    // We abuse a separate accumulator stored on the doodad for this.
+    // Simple approach: only push when the tick just fired (accumulator was reset).
+    // Since pushOutputsToBelts is called every frame but we only want belt
+    // transfer at ~2/s, we use the tickAccumulatorMs as a proxy:
+    // push whenever the accumulator is near zero (just ticked).
+    // Actually simpler: just always allow push but cap belt at BELT_MAX_ITEMS.
+    // The belt's own speed (BELT_ITEMS_PER_SECOND) is the real rate limiter.
+
+    for (const port of def.ports) {
+      if (port.role !== "output") continue;
+
+      const { adjacentTile } = getAbsolutePort(doodad, port, def.footprint.w, def.footprint.h);
+      const belt = sm.getBeltAt(adjacentTile.tx, adjacentTile.ty);
+      if (!belt || belt.items.length >= BELT_MAX_ITEMS) continue;
+
+      // Find first output slot with an item
+      for (let i = 0; i < def.slots.length; i++) {
+        const slotDef = def.slots[i];
+        if (!slotDef || slotDef.role !== "output") continue;
+        const slot = doodad.inventory[i];
+        if (!slot || slot.qty <= 0) continue;
+
+        // Only push if belt entry is clear (no item near progress=0)
+        const entryBlocked = belt.items.some(item => item.progress < 0.3);
+        if (entryBlocked) break;
+
+        belt.items.push({ stack: { itemId: slot.itemId, qty: 1 }, progress: 0 });
+        slot.qty -= 1;
+        if (slot.qty === 0) doodad.inventory[i] = null;
+        break;
+      }
+    }
+  }
+
+  private pullInputsFromBelts(doodad: DoodadState, def: DoodadDef): void {
+    for (const port of def.ports) {
+      if (port.role !== "input") continue;
+
+      const { adjacentTile, facingDir } = getAbsolutePort(doodad, port, def.footprint.w, def.footprint.h);
+      // The input port faces outward (e.g. "W"). The belt that feeds
+      // this port sits on the adjacentTile — one step outside the machine
+      // in the port's facing direction.  Items travel in facingDir and
+      // arrive at adjacentTile with progress >= 1.
+      const belt = sm.getBeltAt(adjacentTile.tx, adjacentTile.ty);
+      // Belt must be travelling TOWARD this machine (into the port)
+      if (!belt) continue;
+      // Belt must travel toward the machine (direction opposite to port's facing)
+      const opposites: Record<string, string> = { N:"S", S:"N", E:"W", W:"E" };
+      if (belt.direction !== opposites[facingDir]) continue;
+      if (!belt || belt.items.length === 0) continue;
+
+      // Only pull items that have reached progress >= 1 (arrived)
+      const arrivedIdx = belt.items.findIndex(item => item.progress >= 1);
+      if (arrivedIdx === -1) continue;
+
+      const arrived = belt.items[arrivedIdx]!;
+
+      // Find a matching input slot with room
+      for (let i = 0; i < def.slots.length; i++) {
+        const slotDef = def.slots[i];
+        if (!slotDef || slotDef.role !== "input") continue;
+
+        // Check filter
+        if (slotDef.filter && slotDef.filter.length > 0) {
+          const itemDef = registry.findItem(arrived.stack.itemId);
+          const tags = itemDef?.tags ?? [];
+          const passes = slotDef.filter.some(f => f === arrived.stack.itemId || tags.includes(f));
+          if (!passes) continue;
+        }
+
+        const slot = doodad.inventory[i];
+        const capacity = slotDef.capacity;
+
+        if (slot === null || slot === undefined) {
+          doodad.inventory[i] = { itemId: arrived.stack.itemId, qty: 1 };
+          belt.items.splice(arrivedIdx, 1);
+          break;
+        }
+        if (slot.itemId === arrived.stack.itemId && slot.qty < capacity) {
+          slot.qty += 1;
+          belt.items.splice(arrivedIdx, 1);
+          break;
+        }
+      }
+    }
   }
 
   /** Write recipe outputs into output slots. Assumes canOutputItems passed. */

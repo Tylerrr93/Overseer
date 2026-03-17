@@ -16,6 +16,7 @@ import { GameConfig } from "@engine/core/GameConfig";
 import type { Renderer } from "@engine/rendering/Renderer";
 import type { DoodadDef } from "@t/content";
 import type { TilePos }   from "@t/state";
+import { rotationToDir }  from "@engine/utils/portUtils";
 
 const T  = GameConfig.TILE_SIZE;
 const CS = GameConfig.CHUNK_SIZE;
@@ -143,18 +144,40 @@ export class BuildSystem {
 
     // Build the instance
     const id = uuidv4();
-    sm.addDoodad({
-      id,
-      defId:             heldItemId,
-      origin,
-      rotation:          placementRotation,
-      inventory:         def.slots.map(() => null),
-      crafting:          null,
-      powered:           def.powerDraw === 0, // unpowered machines start as powered
-      tickAccumulatorMs: 0,
-    });
 
-    // Link tiles → doodad
+    // Belts get a dual entry: doodad record (for tile blocking/rendering)
+    // + belt record (for logistics simulation).
+    if (heldItemId === "belt_straight") {
+      sm.addDoodad({
+        id,
+        defId:             heldItemId,
+        origin,
+        rotation:          placementRotation,
+        inventory:         [],   // belts have no slot inventory
+        crafting:          null,
+        powered:           true,
+        tickAccumulatorMs: 0,
+      });
+      sm.addBelt({
+        id,
+        origin,
+        direction: rotationToDir(placementRotation),
+        items:     [],
+      });
+    } else {
+      sm.addDoodad({
+        id,
+        defId:             heldItemId,
+        origin,
+        rotation:          placementRotation,
+        inventory:         def.slots.map(() => null),
+        crafting:          null,
+        powered:           def.powerDraw === 0,
+        tickAccumulatorMs: 0,
+      });
+    }
+
+    // Link tiles → doodad (prevents overlap)
     this.stampTiles(origin, fp.w, fp.h, id);
 
     bus.emit("ui:notification", { message: `Placed ${def.name}.`, severity: "info" });
