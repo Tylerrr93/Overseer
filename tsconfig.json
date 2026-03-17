@@ -10,7 +10,7 @@
     "paths": {
       "@engine/*": ["./src/engine/*"],
       "@game/*":   ["./src/game/*"],
-      "@types/*":  ["./src/types/*"]
+      "@t/*":      ["./src/types/*"]
     },
     "outDir": "./dist",
     "rootDir": "./src",

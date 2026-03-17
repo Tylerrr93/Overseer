@@ -7,7 +7,7 @@ export default defineConfig({
     alias: {
       "@engine": resolve(__dirname, "src/engine"),
       "@game":   resolve(__dirname, "src/game"),
-      "@types":  resolve(__dirname, "src/types"),
+      "@t":      resolve(__dirname, "src/types"),
     },
   },
   build: {

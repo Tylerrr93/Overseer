@@ -8,7 +8,7 @@
 import { sm } from "@engine/core/StateManager";
 import { registry } from "@engine/core/Registry";
 import { GameConfig } from "@engine/core/GameConfig";
-import type { Tile } from "@types/state";
+import type { Tile } from "@t/state";
 
 const T = GameConfig.TILE_SIZE;
 

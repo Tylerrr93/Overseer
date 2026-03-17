@@ -16,8 +16,8 @@
 //               f) Emit events
 // ============================================================
 
-import type { DoodadState, ItemStack } from "@types/state";
-import type { DoodadDef, RecipeDef, SlotDef } from "@types/content";
+import type { DoodadState, ItemStack } from "@t/state";
+import type { DoodadDef, RecipeDef, SlotDef } from "@t/content";
 import { registry } from "@engine/core/Registry";
 import { sm } from "@engine/core/StateManager";
 import { bus } from "@engine/core/EventBus";
@@ -163,12 +163,12 @@ export class DoodadSystem {
       let toPlace = out.qty;
       for (const idx of outputIndices) {
         const slot = doodad.inventory[idx];
-        const slotDef = def.slots[idx] as SlotDef;
-        if (slot === null) {
+        const slotDef = def.slots[idx];
+        if (slot === null || slot === undefined) {
           toPlace -= out.qty;
           break;
         }
-        if (slot.itemId === out.itemId) {
+        if (slotDef && slot.itemId === out.itemId) {
           const space = slotDef.capacity - slot.qty;
           toPlace -= Math.min(space, toPlace);
         }
@@ -186,12 +186,12 @@ export class DoodadSystem {
       let remaining = out.qty;
       for (const idx of outputIndices) {
         if (remaining <= 0) break;
-        const slotDef = def.slots[idx] as SlotDef;
+        const slotDef = def.slots[idx];
         const slot = doodad.inventory[idx];
-        if (slot === null) {
+        if (slot === null || slot === undefined) {
           doodad.inventory[idx] = { itemId: out.itemId, qty: remaining };
           remaining = 0;
-        } else if (slot.itemId === out.itemId) {
+        } else if (slotDef && slot.itemId === out.itemId) {
           const space = slotDef.capacity - slot.qty;
           const add = Math.min(space, remaining);
           slot.qty += add;

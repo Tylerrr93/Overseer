@@ -10,7 +10,7 @@
 //      to write it.  They never do `sm.state.foo = bar`.
 // ============================================================
 
-import type { GameState, PlayerState, DoodadState, Chunk, ItemStack } from "@types/state";
+import type { GameState, PlayerState, DoodadState, Chunk, ItemStack } from "@t/state";
 import { GameConfig } from "./GameConfig";
 import { bus } from "./EventBus";
 

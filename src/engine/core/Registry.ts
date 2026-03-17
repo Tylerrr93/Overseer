@@ -6,7 +6,7 @@
 //  files directly.
 // ============================================================
 
-import type { ItemDef, RecipeDef, DoodadDef } from "@types/content";
+import type { ItemDef, RecipeDef, DoodadDef } from "@t/content";
 
 export class Registry {
   private readonly items    = new Map<string, ItemDef>();
