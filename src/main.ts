@@ -13,6 +13,7 @@ import { Renderer }         from "@engine/rendering/Renderer";
 import { DoodadSystem }     from "@engine/systems/DoodadSystem";
 import { PlayerSystem }     from "@engine/systems/PlayerSystem";
 import { WorldGen }         from "@engine/world/WorldGen";
+import { InventoryUI }      from "@game/ui/InventoryUI";
 
 // ── 1. Register all game content ─────────────────────────────
 bootstrapContent();
@@ -34,17 +35,19 @@ const playerSystem = new PlayerSystem();
 const doodadSystem = new DoodadSystem();
 const worldGen     = new WorldGen();
 
-// ── 4. State: load save or start fresh ───────────────────────
+// ── 4. UI ────────────────────────────────────────────────────
+const inventoryUI = new InventoryUI();
+playerSystem.setFeedbackUI(inventoryUI);
+
+// ── 5. State: load save or start fresh ───────────────────────
 const loaded = sm.load();
 if (!loaded) {
   console.info("[main] No save found — starting new game.");
-  // Seed the world around origin
   worldGen.ensureChunksAround(0, 0, GameConfig.RENDER_CHUNK_RADIUS);
 }
 
-// ── 5. Demo: place a smelter so you can see tick in action ───
+// ── 6. Demo: place a smelter so you can see tick in action ───
 if (!loaded) {
-  // Simple UUID v4 — no external dependency needed
   const uuidv4 = (): string =>
     "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
       const r = (Math.random() * 16) | 0;
@@ -63,19 +66,19 @@ if (!loaded) {
     tickAccumulatorMs: 0,
   });
 
-  // Give the smelter some starter ore and coal to show crafting
+  // Pre-load the smelter with starter materials so crafting is visible
   const smelter = Object.values(sm.state.doodads)[0]!;
   smelter.inventory[0] = { itemId: "iron_ore", qty: 20 };
   smelter.inventory[1] = { itemId: "coal",     qty: 10 };
 }
 
-// ── 6. Auto-save every 60 seconds ────────────────────────────
+// ── 7. Auto-save every 60 seconds ────────────────────────────
 setInterval(() => sm.save(), 60_000);
 
-// ── 7. Start the game loop ────────────────────────────────────
+// ── 8. Start the game loop ────────────────────────────────────
 const loop = new GameLoop(renderer, playerSystem, doodadSystem, worldGen);
 loop.start();
 
-// ── 8. Expose to console for debugging ───────────────────────
-(window as unknown as Record<string, unknown>).__game = { sm, registry, loop };
+// ── 9. Expose to console for debugging ───────────────────────
+(window as unknown as Record<string, unknown>).__game = { sm, registry, loop, inventoryUI };
 console.info("🌍 Digitized Overseer booted. Access __game in console.");

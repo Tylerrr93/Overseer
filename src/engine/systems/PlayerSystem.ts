@@ -1,22 +1,67 @@
 // ============================================================
 //  src/engine/systems/PlayerSystem.ts
-//  Handles keyboard/touch input → player movement.
+//  Handles keyboard/mouse input → player movement + gathering.
+//
+//  Uses a GatherFeedback interface so the engine doesn't
+//  import from @game — dependency stays one-way.
 // ============================================================
 
-import { sm } from "@engine/core/StateManager";
+import { sm }         from "@engine/core/StateManager";
+import { bus }        from "@engine/core/EventBus";
+import { GameConfig } from "@engine/core/GameConfig";
+import type { TileType } from "@t/state";
+
+// ── Tile → item mapping ───────────────────────────────────────
+
+const TILE_TO_ITEM: Partial<Record<TileType, string>> = {
+  ore_iron:   "iron_ore",
+  ore_copper: "copper_ore",
+  ore_coal:   "coal",
+  organic:    "organic_matter",
+  rubble:     "scrap_metal",
+};
+
+const GATHER_COOLDOWN_MS = 600;
+
+/** Minimal interface — avoids importing the concrete InventoryUI class. */
+export interface GatherFeedbackReceiver {
+  showGatherFeedback(itemName: string, qty: number): void;
+}
+
+// ─────────────────────────────────────────────────────────────
 
 export class PlayerSystem {
-  private readonly keys = new Set<string>();
+  private readonly keys    = new Set<string>();
+  private gatherCooldownMs = 0;
+  private feedbackUI: GatherFeedbackReceiver | null = null;
 
   constructor() {
-    window.addEventListener("keydown", e => this.keys.add(e.key));
+    window.addEventListener("keydown", e => {
+      this.keys.add(e.key);
+      if (e.key === " ") e.preventDefault();
+    });
     window.addEventListener("keyup",   e => this.keys.delete(e.key));
+    window.addEventListener("mousedown", e => {
+      if (e.button === 0) this.tryGather();
+    });
+  }
+
+  /** Wire up any object that can show gather feedback. */
+  setFeedbackUI(ui: GatherFeedbackReceiver): void {
+    this.feedbackUI = ui;
   }
 
   update(deltaMs: number): void {
-    const dt  = deltaMs / 1000; // seconds
+    this.updateMovement(deltaMs);
+    this.updateGather(deltaMs);
+  }
+
+  // ── Movement ─────────────────────────────────────────────
+
+  private updateMovement(deltaMs: number): void {
+    const dt  = deltaMs / 1000;
     const spd = sm.state.player.speed;
-    let { x, y } = sm.state.player.pos;
+    const { x, y } = sm.state.player.pos;
     let dx = 0, dy = 0;
 
     if (this.keys.has("ArrowUp")    || this.keys.has("w") || this.keys.has("W")) dy -= 1;
@@ -24,7 +69,6 @@ export class PlayerSystem {
     if (this.keys.has("ArrowLeft")  || this.keys.has("a") || this.keys.has("A")) dx -= 1;
     if (this.keys.has("ArrowRight") || this.keys.has("d") || this.keys.has("D")) dx += 1;
 
-    // Normalise diagonal
     if (dx !== 0 && dy !== 0) {
       const INV_SQRT2 = 0.7071;
       dx *= INV_SQRT2;
@@ -34,7 +78,58 @@ export class PlayerSystem {
     sm.movePlayer(x + dx * spd * dt, y + dy * spd * dt);
   }
 
-  destroy(): void {
-    // Cleanup if needed
+  // ── Gather ───────────────────────────────────────────────
+
+  private updateGather(deltaMs: number): void {
+    if (this.gatherCooldownMs > 0) {
+      this.gatherCooldownMs -= deltaMs;
+    }
+    if (this.keys.has(" ") && this.gatherCooldownMs <= 0) {
+      this.tryGather();
+    }
   }
+
+  private tryGather(): void {
+    if (this.gatherCooldownMs > 0) return;
+
+    const tile = this.getTileUnderPlayer();
+    if (!tile) return;
+
+    const itemId = TILE_TO_ITEM[tile.type];
+    if (!itemId) return;
+
+    const overflow = sm.givePlayerItem(itemId, 1);
+    if (overflow > 0) {
+      bus.emit("ui:notification", { message: "Inventory full!", severity: "warn" });
+    } else {
+      bus.emit("inventory:changed", { entityId: "player" });
+      const itemName = itemId.replace(/_/g, " ");
+      this.feedbackUI?.showGatherFeedback(itemName, 1);
+    }
+
+    this.gatherCooldownMs = GATHER_COOLDOWN_MS;
+  }
+
+  // ── Tile lookup ───────────────────────────────────────────
+
+  private getTileUnderPlayer() {
+    const T  = GameConfig.TILE_SIZE;
+    const CS = GameConfig.CHUNK_SIZE;
+
+    const { x, y } = sm.state.player.pos;
+    const tx = Math.floor(x / T);
+    const ty = Math.floor(y / T);
+    const cx = Math.floor(tx / CS);
+    const cy = Math.floor(ty / CS);
+
+    const chunk = sm.getChunk(cx, cy);
+    if (!chunk) return null;
+
+    const lx = ((tx % CS) + CS) % CS;
+    const ly = ((ty % CS) + CS) % CS;
+
+    return chunk.tiles[ly]?.[lx] ?? null;
+  }
+
+  destroy(): void {}
 }
