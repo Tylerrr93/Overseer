@@ -1,15 +1,15 @@
 // ============================================================
 //  src/game/ui/InventoryUI.ts
 //  HTML/CSS overlay inventory panel.
-//  Subscribes to EventBus — re-renders only when inventory
-//  actually changes.  Toggled open/closed with "E".
+//  - Draggable via the header bar
+//  - Floating toast notifications that rise and fade
 // ============================================================
 
 import { sm }       from "@engine/core/StateManager";
 import { registry } from "@engine/core/Registry";
 import { bus }      from "@engine/core/EventBus";
 
-// ── Inject styles once ────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────
 
 const STYLES = `
 #inventory-ui {
@@ -28,6 +28,7 @@ const STYLES = `
   color: #c8d8e0;
   box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
   user-select: none;
+  /* No transform once dragged — position set via left/top directly */
 }
 
 #inventory-ui.open {
@@ -41,6 +42,11 @@ const STYLES = `
   margin-bottom: 12px;
   border-bottom: 1px solid #1e3a4a;
   padding-bottom: 8px;
+  cursor: grab;
+}
+
+#inventory-header:active {
+  cursor: grabbing;
 }
 
 #inventory-header h2 {
@@ -132,28 +138,50 @@ const STYLES = `
   text-align: center;
 }
 
-/* Gather feedback flash */
-#gather-indicator {
+/* ── Floating gather toasts ── */
+#gather-toast-container {
   position: fixed;
-  bottom: 24px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse; /* newest at bottom, older drift up */
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 99;
+}
+
+.gather-toast {
   background: rgba(0, 229, 255, 0.12);
-  border: 1px solid rgba(0, 229, 255, 0.3);
+  border: 1px solid rgba(0, 229, 255, 0.28);
   color: #00e5ff;
   font-family: monospace;
   font-size: 11px;
   letter-spacing: 0.15em;
-  padding: 6px 16px;
+  padding: 5px 14px;
   border-radius: 3px;
-  pointer-events: none;
+  white-space: nowrap;
+
+  /* Start just below, invisible */
   opacity: 0;
-  transition: opacity 0.15s;
-  z-index: 99;
+  transform: translateY(12px);
+  transition:
+    opacity   0.12s ease-out,
+    transform 0.18s ease-out;
 }
 
-#gather-indicator.visible {
+.gather-toast.in {
   opacity: 1;
+  transform: translateY(0);
+}
+
+.gather-toast.out {
+  opacity: 0;
+  transform: translateY(-18px);
+  transition:
+    opacity   0.35s ease-in,
+    transform 0.45s ease-in;
 }
 `;
 
@@ -168,11 +196,15 @@ function injectStyles(): void {
 // ── InventoryUI class ─────────────────────────────────────────
 
 export class InventoryUI {
-  private readonly panel:     HTMLElement;
-  private readonly grid:      HTMLElement;
-  private readonly indicator: HTMLElement;
-  private isOpen = false;
-  private indicatorTimer = 0;
+  private readonly panel:          HTMLElement;
+  private readonly header:         HTMLElement;
+  private readonly grid:           HTMLElement;
+  private readonly toastContainer: HTMLElement;
+  private isOpen   = false;
+  private dragging = false;
+  private dragOffsetX = 0;
+  private dragOffsetY = 0;
+  private positioned  = false; // true once user has dragged (bypass centering transform)
 
   constructor() {
     injectStyles();
@@ -184,21 +216,24 @@ export class InventoryUI {
     this.panel.innerHTML = `
       <div id="inventory-header">
         <h2>⬡ Inventory</h2>
-        <span>[E] CLOSE</span>
+        <span>[E] CLOSE · DRAG TO MOVE</span>
       </div>
       <div id="inventory-grid"></div>
       <div id="inventory-footer">SPACE / CLICK — GATHER  ·  E — TOGGLE INVENTORY</div>
     `;
     document.body.appendChild(this.panel);
 
-    this.grid = this.panel.querySelector("#inventory-grid")!;
+    this.header = this.panel.querySelector("#inventory-header")!;
+    this.grid   = this.panel.querySelector("#inventory-grid")!;
 
-    // ── Gather indicator ─────────────────────────────────────
-    this.indicator = document.createElement("div");
-    this.indicator.id = "gather-indicator";
-    document.body.appendChild(this.indicator);
+    // ── Toast container ──────────────────────────────────────
+    this.toastContainer = document.createElement("div");
+    this.toastContainer.id = "gather-toast-container";
+    document.body.appendChild(this.toastContainer);
 
-    // ── Event bindings ───────────────────────────────────────
+    // ── Bindings ─────────────────────────────────────────────
+    this.bindDrag();
+
     window.addEventListener("keydown", e => {
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
@@ -206,13 +241,58 @@ export class InventoryUI {
       }
     });
 
-    // Re-render whenever inventory changes
     bus.on("inventory:changed", () => {
       if (this.isOpen) this.render();
     });
 
-    // Initial render
     this.render();
+  }
+
+  // ── Drag ─────────────────────────────────────────────────────
+
+  private bindDrag(): void {
+    this.header.addEventListener("mousedown", e => {
+      // Don't drag on right-click
+      if (e.button !== 0) return;
+      e.preventDefault();
+
+      this.dragging = true;
+
+      // If panel is still using the CSS centering transform, resolve it to
+      // concrete pixel coords first so the drag origin is correct.
+      if (!this.positioned) {
+        const rect = this.panel.getBoundingClientRect();
+        this.panel.style.transform = "none";
+        this.panel.style.left = `${rect.left}px`;
+        this.panel.style.top  = `${rect.top}px`;
+        this.positioned = true;
+      }
+
+      const rect = this.panel.getBoundingClientRect();
+      this.dragOffsetX = e.clientX - rect.left;
+      this.dragOffsetY = e.clientY - rect.top;
+    });
+
+    window.addEventListener("mousemove", e => {
+      if (!this.dragging) return;
+
+      let newLeft = e.clientX - this.dragOffsetX;
+      let newTop  = e.clientY - this.dragOffsetY;
+
+      // Clamp inside viewport with a small margin
+      const margin = 8;
+      const pw = this.panel.offsetWidth;
+      const ph = this.panel.offsetHeight;
+      newLeft = Math.max(margin, Math.min(window.innerWidth  - pw - margin, newLeft));
+      newTop  = Math.max(margin, Math.min(window.innerHeight - ph - margin, newTop));
+
+      this.panel.style.left = `${newLeft}px`;
+      this.panel.style.top  = `${newTop}px`;
+    });
+
+    window.addEventListener("mouseup", () => {
+      this.dragging = false;
+    });
   }
 
   // ── Public ───────────────────────────────────────────────────
@@ -223,17 +303,35 @@ export class InventoryUI {
     if (this.isOpen) this.render();
   }
 
-  open(): void  { if (!this.isOpen) this.toggle(); }
+  open():  void { if (!this.isOpen) this.toggle(); }
   close(): void { if (this.isOpen)  this.toggle(); }
 
-  /** Flash a gather notification at the bottom of the screen. */
+  /**
+   * Spawn a floating toast that rises and fades out.
+   * Each call creates a fresh element so rapid gathers
+   * stack visually and don't clobber each other.
+   */
   showGatherFeedback(itemName: string, qty: number): void {
-    this.indicator.textContent = `+ ${qty}  ${itemName.toUpperCase()}`;
-    this.indicator.classList.add("visible");
-    clearTimeout(this.indicatorTimer);
-    this.indicatorTimer = window.setTimeout(() => {
-      this.indicator.classList.remove("visible");
-    }, 900);
+    const toast = document.createElement("div");
+    toast.className = "gather-toast";
+    toast.textContent = `+ ${qty}  ${itemName.toUpperCase()}`;
+    this.toastContainer.appendChild(toast);
+
+    // Trigger enter animation on next frame
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => toast.classList.add("in"));
+    });
+
+    // After 700 ms start exit animation
+    setTimeout(() => {
+      toast.classList.remove("in");
+      toast.classList.add("out");
+
+      // Remove from DOM once transition ends
+      toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+      // Safety removal in case transitionend never fires (hidden tab, etc.)
+      setTimeout(() => toast.remove(), 600);
+    }, 700);
   }
 
   // ── Rendering ────────────────────────────────────────────────
@@ -248,7 +346,7 @@ export class InventoryUI {
       el.className = "inv-slot" + (stack ? " filled" : "");
 
       if (stack) {
-        const def = registry.findItem(stack.itemId);
+        const def   = registry.findItem(stack.itemId);
         const color = def?.sprite.startsWith("#") ? def.sprite : "#556";
         const name  = def?.name ?? stack.itemId;
 
