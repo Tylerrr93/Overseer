@@ -1,31 +1,40 @@
 // ============================================================
 //  src/engine/core/GameLoop.ts
 //  Drives the update/render cycle.
-//
-//  Uses a fixed-timestep accumulator for simulation (prevents
-//  spiral-of-death on slow frames) with uncapped render.
 // ============================================================
 
-import type { Renderer } from "@engine/rendering/Renderer";
+import type { Renderer }     from "@engine/rendering/Renderer";
 import type { DoodadSystem } from "@engine/systems/DoodadSystem";
 import type { PlayerSystem } from "@engine/systems/PlayerSystem";
-import type { WorldGen } from "@engine/world/WorldGen";
+import type { BuildSystem }  from "@engine/systems/BuildSystem";
+import type { WorldGen }     from "@engine/world/WorldGen";
 import { GameConfig } from "./GameConfig";
 import { sm } from "./StateManager";
 
-const MAX_DELTA_MS = 200; // clamp runaway frames (tab backgrounded, etc.)
+// Minimal interface so GameLoop doesn't import @game
+interface Tickable { tick(): void; }
+
+const MAX_DELTA_MS = 200;
 
 export class GameLoop {
   private running = false;
   private lastTs  = 0;
   private rafId   = 0;
 
+  private buildUI: Tickable | null = null;
+
   constructor(
     private readonly renderer:     Renderer,
     private readonly playerSystem: PlayerSystem,
     private readonly doodadSystem: DoodadSystem,
+    private readonly buildSystem:  BuildSystem,
     private readonly worldGen:     WorldGen,
   ) {}
+
+  /** Wire in the BuildUI so the HUD label updates each frame. */
+  setBuildUI(ui: Tickable): void {
+    this.buildUI = ui;
+  }
 
   start(): void {
     if (this.running) return;
@@ -51,12 +60,13 @@ export class GameLoop {
     // ── Update phase ────────────────────────────────────────
     this.playerSystem.update(delta);
 
-    // Ensure terrain around player is generated
     const { x, y } = sm.state.player.pos;
     this.worldGen.ensureChunksAround(x, y, GameConfig.RENDER_CHUNK_RADIUS);
 
-    // Systems that run on deltaMs (doodads throttle internally)
+    this.buildSystem.update(delta);
     this.doodadSystem.update(delta);
+
+    this.buildUI?.tick();
 
     sm.state.tickCount++;
 

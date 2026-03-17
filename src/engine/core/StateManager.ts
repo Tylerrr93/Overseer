@@ -25,9 +25,11 @@ function defaultState(): GameState {
     worldSeed: Math.floor(Math.random() * 0xffffffff),
     player: {
       pos: { x: 0, y: 0 },
+      cursorWorldPos: { x: 0, y: 0 },
       speed: GameConfig.PLAYER_SPEED_PX_S,
       inventory: { slots: makeEmptyInventory(GameConfig.PLAYER_INV_SLOTS) },
       heldItemId: null,
+      placementRotation: 0,
       health: 100,
       maxHealth: 100,
     },
@@ -120,6 +122,11 @@ export class StateManager {
     this.state.player.pos.x = x;
     this.state.player.pos.y = y;
     bus.emit("player:moved", { x, y });
+  }
+
+  updateCursorWorld(x: number, y: number): void {
+    this.state.player.cursorWorldPos.x = x;
+    this.state.player.cursorWorldPos.y = y;
   }
 
   /** Add items to player inventory. Returns overflow qty. */

@@ -104,11 +104,15 @@ export interface BeltSegment {
 export interface PlayerState {
   /** World-space position (pixels, not tiles). */
   pos: Vec2;
+  /** Mouse cursor position in world space (pixels). Updated every mousemove. */
+  cursorWorldPos: Vec2;
   /** Movement speed in px/s. */
   speed: number;
   inventory: InventoryState;
-  /** Currently held tool / selected Doodad def for placement. */
+  /** ID of the DoodadDef currently selected for placement; null = not in build mode. */
   heldItemId: string | null;
+  /** 0-3: clockwise 90deg rotation steps for the held doodad. */
+  placementRotation: number;
   health: number;
   maxHealth: number;
 }
