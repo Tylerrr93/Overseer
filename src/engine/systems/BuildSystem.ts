@@ -9,7 +9,8 @@
 //   • Expose canPlace() for the Renderer to colour the ghost
 // ============================================================
 
-import { sm }         from "@engine/core/StateManager";
+import { sm }           from "@engine/core/StateManager";
+import { panelManager } from "@engine/core/PanelManager";
 import { registry }   from "@engine/core/Registry";
 import { bus }        from "@engine/core/EventBus";
 import { GameConfig } from "@engine/core/GameConfig";
@@ -71,12 +72,12 @@ export class BuildSystem {
 
     // Left click → place (handled here; gathering is in PlayerSystem)
     window.addEventListener("mousedown", e => {
-      if (e.button === 0) this.onLeftClick();
+      if (e.button === 0 && !panelManager.isAnyPanelOpen()) this.onLeftClick();
     });
 
     // Right click → cancel build mode
     window.addEventListener("contextmenu", e => {
-      if (sm.state.player.heldItemId) {
+      if (sm.state.player.heldItemId && !panelManager.isAnyPanelOpen()) {
         e.preventDefault();
         this.exitBuildMode();
       }
@@ -153,10 +154,11 @@ export class BuildSystem {
         defId:             heldItemId,
         origin,
         rotation:          placementRotation,
-        inventory:         [],   // belts have no slot inventory
+        inventory:         [],
         crafting:          null,
         powered:           true,
         tickAccumulatorMs: 0,
+        pinnedRecipeId:    null,
       });
       sm.addBelt({
         id,
@@ -174,6 +176,7 @@ export class BuildSystem {
         crafting:          null,
         powered:           def.powerDraw === 0,
         tickAccumulatorMs: 0,
+        pinnedRecipeId:    null,
       });
     }
 

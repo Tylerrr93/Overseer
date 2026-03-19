@@ -6,7 +6,8 @@
 //  import from @game — dependency stays one-way.
 // ============================================================
 
-import { sm }         from "@engine/core/StateManager";
+import { sm }           from "@engine/core/StateManager";
+import { panelManager } from "@engine/core/PanelManager";
 import { bus }        from "@engine/core/EventBus";
 import { GameConfig } from "@engine/core/GameConfig";
 import type { TileType } from "@t/state";
@@ -37,12 +38,13 @@ export class PlayerSystem {
 
   constructor() {
     window.addEventListener("keydown", e => {
+      if (panelManager.isAnyPanelOpen()) return; // panels own the keyboard
       this.keys.add(e.key);
       if (e.key === " ") e.preventDefault();
     });
-    window.addEventListener("keyup",   e => this.keys.delete(e.key));
+    window.addEventListener("keyup", e => this.keys.delete(e.key));
     window.addEventListener("mousedown", e => {
-      if (e.button === 0) this.tryGather();
+      if (e.button === 0 && !panelManager.isAnyPanelOpen()) this.tryGather();
     });
   }
 

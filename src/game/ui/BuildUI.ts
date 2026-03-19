@@ -5,6 +5,7 @@
 // ============================================================
 
 import { sm }       from "@engine/core/StateManager";
+import { bus }      from "@engine/core/EventBus";
 import { registry } from "@engine/core/Registry";
 
 // ── Styles ────────────────────────────────────────────────────
@@ -203,6 +204,11 @@ export class BuildUI {
     // Update HUD when right-click clears build mode
     window.addEventListener("contextmenu", () => {
       requestAnimationFrame(() => this.updateHud());
+    });
+
+    // Close when another panel opens
+    bus.on("ui:close-panels", ({ except }) => {
+      if (except !== "build") this.close();
     });
   }
 

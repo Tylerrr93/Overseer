@@ -17,6 +17,9 @@ export type EventMap = {
   "inventory:changed": { entityId: string };
   // Player
   "player:moved":      { x: number; y: number };
+  // Doodad interaction
+  "doodad:interact":   { doodadId: string; defId: string };
+  "ui:close-panels":   { except?: string };  // close all panels except named one
   // UI (engine → UI layer)
   "ui:notification":   { message: string; severity: "info" | "warn" | "error" };
 };

@@ -129,4 +129,19 @@ export interface DoodadDef {
    * Falls back to GameConfig.defaultDoodadTickMs if absent.
    */
   tickIntervalMs?: number;
+
+  /**
+   * If true, the player can press F when nearby to open the
+   * Doodad UI panel (inventory inspection + recipe selection).
+   * Storage chests set this automatically via machineTag.
+   */
+  interactable?: boolean;
+
+  /**
+   * Explicit list of recipe IDs this doodad can run.
+   * If omitted, all recipes matching machineTag are available.
+   * Use this to restrict a machine to a subset of recipes.
+   * e.g. a "coal_only_smelter" could list only "smelt_coal".
+   */
+  allowedRecipeIds?: string[];
 }

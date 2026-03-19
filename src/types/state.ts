@@ -86,6 +86,12 @@ export interface DoodadState {
   powered: boolean;
   /** Accumulates leftover ms between ticks to handle uneven frame times. */
   tickAccumulatorMs: number;
+  /**
+   * Player-pinned recipe ID. When set, the machine will only attempt
+   * this recipe (even if inputs are absent — it waits rather than
+   * auto-switching to another recipe). null = auto-select.
+   */
+  pinnedRecipeId: string | null;
 }
 
 // ── Belt / Logistics ─────────────────────────────────────────

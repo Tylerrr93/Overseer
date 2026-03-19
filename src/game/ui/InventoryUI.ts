@@ -7,7 +7,8 @@
 
 import { sm }       from "@engine/core/StateManager";
 import { registry } from "@engine/core/Registry";
-import { bus }      from "@engine/core/EventBus";
+import { bus }         from "@engine/core/EventBus";
+import { panelManager } from "@engine/core/PanelManager";
 
 // ── Styles ────────────────────────────────────────────────────
 
@@ -223,6 +224,10 @@ export class InventoryUI {
     `;
     document.body.appendChild(this.panel);
 
+    // Prevent clicks from reaching game canvas while panel is open
+    this.panel.addEventListener("mousedown", e => e.stopPropagation());
+    this.panel.addEventListener("click",     e => e.stopPropagation());
+
     this.header = this.panel.querySelector("#inventory-header")!;
     this.grid   = this.panel.querySelector("#inventory-grid")!;
 
@@ -236,6 +241,8 @@ export class InventoryUI {
 
     window.addEventListener("keydown", e => {
       if (e.key === "e" || e.key === "E") {
+        // Block entirely if any other panel is open (chest etc.)
+        if (panelManager.isAnyPanelOpen() && panelManager.getActive() !== "inventory") return;
         e.preventDefault();
         this.toggle();
       }
@@ -243,6 +250,11 @@ export class InventoryUI {
 
     bus.on("inventory:changed", () => {
       if (this.isOpen) this.render();
+    });
+
+    // Close when another panel requests it (e.g. chest opening)
+    bus.on("ui:close-panels", ({ except }) => {
+      if (except !== "inventory") this.close();
     });
 
     this.render();
@@ -300,11 +312,18 @@ export class InventoryUI {
   toggle(): void {
     this.isOpen = !this.isOpen;
     this.panel.classList.toggle("open", this.isOpen);
-    if (this.isOpen) this.render();
+    if (this.isOpen) {
+      panelManager.open("inventory");
+      this.render();
+    } else {
+      panelManager.close("inventory");
+    }
   }
 
   open():  void { if (!this.isOpen) this.toggle(); }
   close(): void { if (this.isOpen)  this.toggle(); }
+
+  isCurrentlyOpen(): boolean { return this.isOpen; }
 
   /**
    * Spawn a floating toast that rises and fades out.

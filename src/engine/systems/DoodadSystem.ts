@@ -42,65 +42,81 @@ export class DoodadSystem {
 
   private tickDoodad(doodad: DoodadState, deltaMs: number): void {
     const def = registry.getDoodad(doodad.defId);
+
+    // Extractors are handled entirely by ExtractorSystem — skip them here
+    // so they don't share tickAccumulatorMs with DoodadSystem's counter.
+    if (def.machineTag?.startsWith("extractor_")) return;
+
     const interval = def.tickIntervalMs ?? GameConfig.DEFAULT_DOODAD_TICK_MS;
 
+    // Belt IO runs every frame regardless of tick interval
+    this.pushOutputsToBelts(doodad, def);
+    this.pullInputsFromBelts(doodad, def);
+
+    // Crafting logic only fires on the tick interval
     doodad.tickAccumulatorMs += deltaMs;
     if (doodad.tickAccumulatorMs < interval) return;
 
-    // Consume accumulated time in discrete ticks
     while (doodad.tickAccumulatorMs >= interval) {
       doodad.tickAccumulatorMs -= interval;
       this.runTick(doodad, def, interval);
     }
-
-    // Push/pull belt IO every frame (not just on tick intervals)
-    // so items flow even while a machine is mid-cycle or idle.
-    this.pushOutputsToBelts(doodad, def);
-    this.pullInputsFromBelts(doodad, def);
   }
 
   private runTick(doodad: DoodadState, def: DoodadDef, tickMs: number): void {
-    // Non-machine doodads (belts, power poles) are handled by
-    // their own dedicated systems; skip here.
     if (!def.machineTag) return;
 
-    // 1. Ensure we have a recipe selected.
-    const recipe = this.resolveRecipe(doodad, def);
-    if (!recipe) {
-      doodad.crafting = null;
-      return;
-    }
-
-    // 2. Power check.
+    // Power check — cancels any in-progress work too.
     if (def.powerDraw > 0 && !doodad.powered) {
       doodad.crafting = null;
       return;
     }
 
-    // 3. Check input availability (only when starting a new cycle).
-    if (!doodad.crafting) {
-      if (!this.canConsumeInputs(doodad, def, recipe)) return;
-      // Lock inputs into the internal buffer (consume them now,
-      // so two ticks don't double-consume).
-      this.consumeInputs(doodad, def, recipe);
-      doodad.crafting = { recipeId: recipe.id, elapsedMs: 0 };
-      bus.emit("doodad:craft:start", { doodadId: doodad.id, recipeId: recipe.id });
+    // ── If a cycle is already in progress, just advance it ──
+    // Do NOT call resolveRecipe here — inputs were already consumed
+    // at cycle start and are no longer in the slots.
+    if (doodad.crafting) {
+      const activeRecipe = registry.findRecipe(doodad.crafting.recipeId);
+      if (!activeRecipe) {
+        // Recipe no longer exists — abort
+        doodad.crafting = null;
+        return;
+      }
+
+      doodad.crafting.elapsedMs += tickMs;
+
+      if (doodad.crafting.elapsedMs >= activeRecipe.craftingTime) {
+        if (this.canOutputItems(doodad, def, activeRecipe)) {
+          this.writeOutputs(doodad, def, activeRecipe);
+          doodad.crafting = null;
+          bus.emit("doodad:craft:finish", { doodadId: doodad.id, recipeId: activeRecipe.id });
+        }
+        // Output full — stall with crafting intact until room opens.
+      }
+      return;
     }
 
-    // 4. Advance crafting progress.
+    // ── No active cycle — try to start a new one ─────────────
+    const recipe = this.resolveRecipe(doodad, def);
+    if (!recipe) return; // no matching recipe or inputs not ready
+
+    if (!this.canConsumeInputs(doodad, def, recipe)) return;
+
+    // Consume inputs now and lock in the cycle.
+    this.consumeInputs(doodad, def, recipe);
+    doodad.crafting = { recipeId: recipe.id, elapsedMs: 0 };
+    bus.emit("doodad:craft:start", { doodadId: doodad.id, recipeId: recipe.id });
+
+    // Advance by one tick immediately (this tick counts).
     doodad.crafting.elapsedMs += tickMs;
 
-    // 5. Completion check.
     if (doodad.crafting.elapsedMs >= recipe.craftingTime) {
       if (this.canOutputItems(doodad, def, recipe)) {
         this.writeOutputs(doodad, def, recipe);
         doodad.crafting = null;
         bus.emit("doodad:craft:finish", { doodadId: doodad.id, recipeId: recipe.id });
       }
-      // If output slots are full, stall — crafting stays "done"
-      // until room opens up. This is intentional backpressure.
     }
-
   }
 
   // ── Recipe resolution ─────────────────────────────────────
@@ -112,7 +128,21 @@ export class DoodadSystem {
    * Later: expose a UI for the player to pin a recipe.
    */
   private resolveRecipe(doodad: DoodadState, def: DoodadDef): RecipeDef | null {
-    const candidates = registry.recipesForMachine(def.machineTag!);
+    // If player has pinned a recipe, only attempt that one.
+    // The machine waits (stalls) if inputs aren't ready — no auto-switching.
+    if (doodad.pinnedRecipeId) {
+      const pinned = registry.findRecipe(doodad.pinnedRecipeId);
+      if (pinned && this.canConsumeInputs(doodad, def, pinned)) return pinned;
+      return null; // stall until inputs match the pinned recipe
+    }
+
+    // Otherwise: auto-select from allowed recipes for this machine.
+    let candidates = registry.recipesForMachine(def.machineTag!);
+    // Restrict to allowedRecipeIds if the def specifies a subset.
+    if (def.allowedRecipeIds && def.allowedRecipeIds.length > 0) {
+      const allowed = new Set(def.allowedRecipeIds);
+      candidates = candidates.filter(r => allowed.has(r.id));
+    }
     for (const recipe of candidates) {
       if (this.canConsumeInputs(doodad, def, recipe)) return recipe;
     }

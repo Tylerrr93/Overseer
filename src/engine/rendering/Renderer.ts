@@ -1,25 +1,22 @@
 // ============================================================
 //  src/engine/rendering/Renderer.ts
-//  Canvas 2D renderer.
-//  Phase 3 additions:
-//   - Build mode grid overlay
-//   - Placement ghost (green = valid, red = blocked)
+//  Phase 4 update:
+//   - Port indicators on all placed doodads (green=out, blue=in)
+//   - Ghost shows port indicators + belt direction arrow
+//   - Belt chevrons + item interpolation
 // ============================================================
 
-import { sm }       from "@engine/core/StateManager";
-import { registry } from "@engine/core/Registry";
+import { sm }         from "@engine/core/StateManager";
+import { registry }   from "@engine/core/Registry";
 import { GameConfig } from "@engine/core/GameConfig";
-import type { Tile } from "@t/state";
-import { DIR_DELTA } from "@engine/utils/portUtils";
+import type { Tile }  from "@t/state";
+import { DIR_DELTA, rotateDir, rotationToDir } from "@engine/utils/portUtils";
 
-// BuildSystem is imported as a type-only interface to avoid circular deps.
-// Renderer only calls .lastPlacementValid and .validate() on it.
 export interface IBuildSystem {
   lastPlacementValid: boolean;
   validate(origin: { tx: number; ty: number }, w: number, h: number): boolean;
 }
 
-// rotatedFootprint duplicated here so Renderer has no @engine/systems import
 function rotatedFP(w: number, h: number, rot: number) {
   return (rot % 2 === 0) ? { w, h } : { w: h, h: w };
 }
@@ -37,6 +34,11 @@ const TILE_COLORS: Record<string, string> = {
   organic:    "#1a2a0d",
 };
 
+// Port indicator colours
+const PORT_OUT_COLOR = "rgba(0, 255, 100, 0.85)";
+const PORT_IN_COLOR  = "rgba(80, 160, 255, 0.85)";
+const PORT_SIZE      = 5;
+
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
   readonly ctx:    CanvasRenderingContext2D;
@@ -44,7 +46,6 @@ export class Renderer {
   cameraX = 0;
   cameraY = 0;
 
-  /** Injected by main.ts after BuildSystem is created. */
   buildSystem: IBuildSystem | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -89,7 +90,6 @@ export class Renderer {
     }
 
     ctx.restore();
-
     this.renderHUD();
   }
 
@@ -123,8 +123,9 @@ export class Renderer {
     for (const doodad of Object.values(sm.state.doodads)) {
       const def = registry.findDoodad(doodad.defId);
       if (!def) continue;
+      // Belts are rendered separately
+      if (def.id === "belt_straight") continue;
 
-      // Use actual stored rotation for rendering size
       const fp = rotatedFP(def.footprint.w, def.footprint.h, doodad.rotation);
       const wx = doodad.origin.tx * T;
       const wy = doodad.origin.ty * T;
@@ -133,13 +134,14 @@ export class Renderer {
 
       if (!this.inView(wx, wy, pw, ph)) continue;
 
+      // Body
       ctx.fillStyle = def.sprite.startsWith("#") ? def.sprite : "#666";
       ctx.fillRect(wx + 2, wy + 2, pw - 4, ph - 4);
-
       ctx.strokeStyle = "#aaa";
       ctx.lineWidth = 1;
       ctx.strokeRect(wx + 2, wy + 2, pw - 4, ph - 4);
 
+      // Crafting progress bar
       if (doodad.crafting) {
         const recipe = registry.findRecipe(doodad.crafting.recipeId);
         if (recipe) {
@@ -149,15 +151,95 @@ export class Renderer {
         }
       }
 
+      // Label
       ctx.fillStyle = "#eee";
-      ctx.font = `${Math.max(8, T * 0.3)}px monospace`;
-      ctx.fillText(def.name, wx + 4, wy + 14);
+      ctx.font = `${Math.max(8, T * 0.28)}px monospace`;
+      ctx.fillText(def.name, wx + 4, wy + 13);
+
+      // Port indicators
+      this.renderPortIndicators(wx, wy, def.ports, def.footprint.w, def.footprint.h, doodad.rotation, false);
     }
   }
 
-  // ── Player ────────────────────────────────────────────────
+  // ── Port indicators ───────────────────────────────────────
 
-  // Belt direction chevron arrows
+  /**
+   * Draws a small colored square on each port edge.
+   * Green = output, Blue = input.
+   * `ghost` = true renders them semi-transparent.
+   */
+  private renderPortIndicators(
+    originWx: number, originWy: number,
+    ports: import("@t/content").DoodadPort[],
+    defW: number, defH: number,
+    rotation: number,
+    ghost: boolean,
+  ): void {
+    const { ctx } = this;
+    ctx.globalAlpha = ghost ? 0.7 : 1.0;
+
+    for (const port of ports) {
+      // Rotate port offset
+      let rdx: number, rdy: number;
+      switch (rotation) {
+        case 1:  rdx = defH - 1 - port.dy; rdy = port.dx;              break;
+        case 2:  rdx = defW - 1 - port.dx; rdy = defH - 1 - port.dy;   break;
+        case 3:  rdx = port.dy;             rdy = defW - 1 - port.dx;   break;
+        default: rdx = port.dx;             rdy = port.dy;               break;
+      }
+
+      const facingDir = rotateDir(port.dir, rotation);
+      const delta = DIR_DELTA[facingDir];
+
+      // Tile world position of port
+      const ptWx = originWx + rdx * T;
+      const ptWy = originWy + rdy * T;
+
+      // Place indicator on the edge of the tile facing outward
+      const ex = ptWx + T / 2 + delta.dx * (T / 2 - PORT_SIZE / 2 - 1);
+      const ey = ptWy + T / 2 + delta.dy * (T / 2 - PORT_SIZE / 2 - 1);
+
+      ctx.fillStyle = port.role === "output" ? PORT_OUT_COLOR : PORT_IN_COLOR;
+      ctx.fillRect(ex - PORT_SIZE / 2, ey - PORT_SIZE / 2, PORT_SIZE, PORT_SIZE);
+
+      // Arrow pointing in the direction items flow
+      this.drawPortArrow(ex, ey, facingDir, port.role === "output", ghost);
+    }
+
+    ctx.globalAlpha = 1.0;
+  }
+
+  private drawPortArrow(
+    cx: number, cy: number,
+    dir: import("@t/content").CardinalDir,
+    isOutput: boolean,
+    ghost: boolean,
+  ): void {
+    const { ctx } = this;
+    const a = 4; // arrow arm length
+    // Output: arrow points outward. Input: arrow points inward.
+    const d = DIR_DELTA[dir];
+    const flip = isOutput ? 1 : -1;
+
+    ctx.strokeStyle = isOutput ? PORT_OUT_COLOR : PORT_IN_COLOR;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = ghost ? 0.6 : 0.95;
+    ctx.beginPath();
+    // Shaft
+    ctx.moveTo(cx - d.dx * a * flip, cy - d.dy * a * flip);
+    ctx.lineTo(cx + d.dx * a * flip, cy + d.dy * a * flip);
+    // Arrowhead: two lines perpendicular
+    const px = d.dy, py = -d.dx; // perpendicular
+    ctx.moveTo(cx + d.dx * a * flip, cy + d.dy * a * flip);
+    ctx.lineTo(cx + (d.dx - px * 0.5) * a * flip, cy + (d.dy - py * 0.5) * a * flip);
+    ctx.moveTo(cx + d.dx * a * flip, cy + d.dy * a * flip);
+    ctx.lineTo(cx + (d.dx + px * 0.5) * a * flip, cy + (d.dy + py * 0.5) * a * flip);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+  }
+
+  // ── Belts ─────────────────────────────────────────────────
+
   private renderBelts(): void {
     const { ctx } = this;
 
@@ -166,45 +248,54 @@ export class Renderer {
       const wy = belt.origin.ty * T;
       if (!this.inView(wx, wy, T, T)) continue;
 
-      ctx.fillStyle = "#4a3a1a";
+      // Belt base
+      ctx.fillStyle = "#3a2e14";
       ctx.fillRect(wx + 1, wy + 1, T - 2, T - 2);
 
-      const cx2 = wx + T / 2;
-      const cy2 = wy + T / 2;
-      const arm = T * 0.22;
-
-      ctx.strokeStyle = "#c8a050";
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-
-      switch (belt.direction) {
-        case "N":
-          ctx.moveTo(cx2 - arm, cy2 + arm); ctx.lineTo(cx2, cy2 - arm); ctx.lineTo(cx2 + arm, cy2 + arm);
-          break;
-        case "E":
-          ctx.moveTo(cx2 - arm, cy2 - arm); ctx.lineTo(cx2 + arm, cy2); ctx.lineTo(cx2 - arm, cy2 + arm);
-          break;
-        case "S":
-          ctx.moveTo(cx2 - arm, cy2 - arm); ctx.lineTo(cx2, cy2 + arm); ctx.lineTo(cx2 + arm, cy2 - arm);
-          break;
-        case "W":
-          ctx.moveTo(cx2 + arm, cy2 - arm); ctx.lineTo(cx2 - arm, cy2); ctx.lineTo(cx2 + arm, cy2 + arm);
-          break;
+      // Lane stripes
+      ctx.fillStyle = "#4a3e1e";
+      const isNS = belt.direction === "N" || belt.direction === "S";
+      if (isNS) {
+        ctx.fillRect(wx + T * 0.3, wy + 1, T * 0.12, T - 2);
+        ctx.fillRect(wx + T * 0.58, wy + 1, T * 0.12, T - 2);
+      } else {
+        ctx.fillRect(wx + 1, wy + T * 0.3, T - 2, T * 0.12);
+        ctx.fillRect(wx + 1, wy + T * 0.58, T - 2, T * 0.12);
       }
-      ctx.stroke();
+
+      // Direction chevron
+      this.drawBeltChevron(wx, wy, belt.direction);
     }
   }
 
-  // Belt item interpolation rendering
+  private drawBeltChevron(wx: number, wy: number, dir: import("@t/content").CardinalDir): void {
+    const { ctx } = this;
+    const cx = wx + T / 2;
+    const cy = wy + T / 2;
+    const arm = T * 0.2;
+
+    ctx.strokeStyle = "#d4a030";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    switch (dir) {
+      case "N": ctx.moveTo(cx - arm, cy + arm); ctx.lineTo(cx, cy - arm); ctx.lineTo(cx + arm, cy + arm); break;
+      case "E": ctx.moveTo(cx - arm, cy - arm); ctx.lineTo(cx + arm, cy); ctx.lineTo(cx - arm, cy + arm); break;
+      case "S": ctx.moveTo(cx - arm, cy - arm); ctx.lineTo(cx, cy + arm); ctx.lineTo(cx + arm, cy - arm); break;
+      case "W": ctx.moveTo(cx + arm, cy - arm); ctx.lineTo(cx - arm, cy); ctx.lineTo(cx + arm, cy + arm); break;
+    }
+    ctx.stroke();
+  }
+
+  // ── Belt items ────────────────────────────────────────────
+
   private renderBeltItems(): void {
     const { ctx } = this;
-    const ITEM_SIZE = T * 0.38;
+    const ITEM_SIZE = T * 0.36;
 
     for (const belt of Object.values(sm.state.belts)) {
       if (belt.items.length === 0) continue;
-
       const wx = belt.origin.tx * T;
       const wy = belt.origin.ty * T;
       if (!this.inView(wx, wy, T, T)) continue;
@@ -216,7 +307,7 @@ export class Renderer {
       const endY   = startY + delta.dy * T;
 
       for (const entry of belt.items) {
-        const p  = entry.progress;
+        const p  = Math.min(entry.progress, 1);
         const ix = startX + (endX - startX) * p;
         const iy = startY + (endY - startY) * p;
 
@@ -225,19 +316,19 @@ export class Renderer {
 
         ctx.fillStyle = color;
         ctx.fillRect(ix - ITEM_SIZE / 2, iy - ITEM_SIZE / 2, ITEM_SIZE, ITEM_SIZE);
-
-        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
         ctx.lineWidth = 0.5;
         ctx.strokeRect(ix - ITEM_SIZE / 2, iy - ITEM_SIZE / 2, ITEM_SIZE, ITEM_SIZE);
       }
     }
   }
 
+  // ── Player ────────────────────────────────────────────────
+
   private renderPlayer(): void {
     const { ctx } = this;
     const { x, y } = sm.state.player.pos;
     const S = T * 0.8;
-
     ctx.fillStyle = "#00e5ff";
     ctx.beginPath();
     ctx.arc(x, y, S / 2, 0, Math.PI * 2);
@@ -247,32 +338,27 @@ export class Renderer {
     ctx.stroke();
   }
 
-  // ── Build Mode: Grid Overlay ──────────────────────────────
+  // ── Build mode: grid overlay ──────────────────────────────
 
   private renderGridOverlay(): void {
     const { ctx } = this;
     const { width: W, height: H } = this.canvas;
-
-    // Compute first visible tile coords in world space
     const startX = Math.floor(this.cameraX / T) * T;
     const startY = Math.floor(this.cameraY / T) * T;
 
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.lineWidth = 0.5;
-
     ctx.beginPath();
     for (let wx = startX; wx < this.cameraX + W + T; wx += T) {
-      ctx.moveTo(wx, this.cameraY);
-      ctx.lineTo(wx, this.cameraY + H);
+      ctx.moveTo(wx, this.cameraY); ctx.lineTo(wx, this.cameraY + H);
     }
     for (let wy = startY; wy < this.cameraY + H + T; wy += T) {
-      ctx.moveTo(this.cameraX,     wy);
-      ctx.lineTo(this.cameraX + W, wy);
+      ctx.moveTo(this.cameraX, wy); ctx.lineTo(this.cameraX + W, wy);
     }
     ctx.stroke();
   }
 
-  // ── Build Mode: Ghost ─────────────────────────────────────
+  // ── Build mode: ghost ─────────────────────────────────────
 
   private renderGhost(): void {
     const { ctx } = this;
@@ -282,10 +368,9 @@ export class Renderer {
     const def = registry.findDoodad(heldItemId);
     if (!def) return;
 
-    const fp   = rotatedFP(def.footprint.w, def.footprint.h, placementRotation);
+    const fp       = rotatedFP(def.footprint.w, def.footprint.h, placementRotation);
     const originTx = Math.floor(cursorWorldPos.x / T) - Math.floor(fp.w / 2);
     const originTy = Math.floor(cursorWorldPos.y / T) - Math.floor(fp.h / 2);
-
     const wx = originTx * T;
     const wy = originTy * T;
     const pw = fp.w * T;
@@ -294,21 +379,17 @@ export class Renderer {
     const valid = this.buildSystem?.lastPlacementValid ?? false;
 
     // Ghost fill
-    ctx.fillStyle = valid
-      ? "rgba(0, 255, 80, 0.18)"
-      : "rgba(255, 40, 40, 0.22)";
+    ctx.fillStyle = valid ? "rgba(0,255,80,0.15)" : "rgba(255,40,40,0.2)";
     ctx.fillRect(wx, wy, pw, ph);
 
     // Ghost border
-    ctx.strokeStyle = valid
-      ? "rgba(0, 255, 80, 0.7)"
-      : "rgba(255, 40, 40, 0.7)";
+    ctx.strokeStyle = valid ? "rgba(0,255,80,0.7)" : "rgba(255,40,40,0.7)";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(wx + 0.5, wy + 0.5, pw - 1, ph - 1);
 
-    // Sprite colour tint
+    // Sprite tint
     const spriteColor = def.sprite.startsWith("#") ? def.sprite : "#666";
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.3;
     ctx.fillStyle = spriteColor;
     ctx.fillRect(wx + 3, wy + 3, pw - 6, ph - 6);
     ctx.globalAlpha = 1;
@@ -317,6 +398,17 @@ export class Renderer {
     ctx.fillStyle = valid ? "rgba(0,255,80,0.9)" : "rgba(255,80,80,0.9)";
     ctx.font = "9px monospace";
     ctx.fillText(def.name, wx + 4, wy + 12);
+
+    // Ghost port indicators (shows player where ports will be)
+    if (def.ports.length > 0) {
+      this.renderPortIndicators(wx, wy, def.ports, def.footprint.w, def.footprint.h, placementRotation, true);
+    }
+
+    // Belt ghost: draw the direction chevron so player knows before placing
+    if (heldItemId === "belt_straight") {
+      const beltDir = rotationToDir(placementRotation);
+      this.drawBeltChevron(wx, wy, beltDir);
+    }
   }
 
   // ── HUD ───────────────────────────────────────────────────
@@ -339,10 +431,8 @@ export class Renderer {
   private inView(wx: number, wy: number, w: number, h: number): boolean {
     const { width: W, height: H } = this.canvas;
     return (
-      wx + w > this.cameraX &&
-      wy + h > this.cameraY &&
-      wx < this.cameraX + W &&
-      wy < this.cameraY + H
+      wx + w > this.cameraX && wy + h > this.cameraY &&
+      wx < this.cameraX + W && wy < this.cameraY + H
     );
   }
 }

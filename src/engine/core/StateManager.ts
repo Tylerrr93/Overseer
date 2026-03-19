@@ -74,6 +74,12 @@ export class StateManager {
       if (!p.cursorWorldPos)               p.cursorWorldPos    = { x: 0, y: 0 };
       if (p.placementRotation === undefined) p.placementRotation = 0;
       if (!this.state.belts)               (this.state as GameState).belts = {};
+      // Migrate doodad instances
+      for (const d of Object.values(this.state.doodads)) {
+        if (d.pinnedRecipeId === undefined) d.pinnedRecipeId = null;
+      }
+      // Note: if doodad slot counts changed (e.g. fuel slot added to extractor),
+      // clear localStorage manually or the save version will handle it on next bump.
       // ───────────────────────────────────────────────────────
       console.info("[StateManager] Game loaded.");
       return true;

@@ -22,8 +22,9 @@ export const DOODADS: DoodadDef[] = [
     ports: [
       { dx: 0, dy: 0, dir: "S", role: "output" },
     ],
-    machineTag: "personal_fab",
-    powerDraw:  0,  // self-powered (hand-cranked)
+    machineTag:        "personal_fab",
+    interactable:      true,
+    powerDraw:         0,
   },
 
   // ── Basic Smelter (2×2) ──────────────────────────────────
@@ -43,9 +44,10 @@ export const DOODADS: DoodadDef[] = [
       { dx: 0, dy: 1, dir: "W", role: "input" },   // fuel in from left
       { dx: 1, dy: 0, dir: "E", role: "output" },  // product out right
     ],
-    machineTag:    "smelter",
-    powerDraw:     0,   // coal-fired; no electric grid needed
-    tickIntervalMs: 500,
+    machineTag:        "smelter",
+    interactable:      true,
+    powerDraw:         0,
+    tickIntervalMs:    500,
   },
 
   // ── Fabricator (3×3) ─────────────────────────────────────
@@ -69,8 +71,9 @@ export const DOODADS: DoodadDef[] = [
       { dx: 0, dy: 2, dir: "S", role: "output" },
       { dx: 2, dy: 2, dir: "S", role: "output" },
     ],
-    machineTag: "fabricator",
-    powerDraw:  50,   // 50 W — needs power grid
+    machineTag:    "fabricator",
+    interactable:  true,
+    powerDraw:     50,
   },
 
   // ── Carbon Press (2×1) ───────────────────────────────────
@@ -88,26 +91,29 @@ export const DOODADS: DoodadDef[] = [
       { dx: 0, dy: 0, dir: "W", role: "input" },
       { dx: 1, dy: 0, dir: "E", role: "output" },
     ],
-    machineTag: "carbon_press",
-    powerDraw:  20,
+    machineTag:    "carbon_press",
+    interactable:  true,
+    powerDraw:     20,
   },
 
   // ── Iron Extractor (1×1) ─────────────────────────────────
   {
     id:          "iron_extractor",
     name:        "Iron Extractor",
-    description: "Drills iron ore from the ground. Must be placed on iron ore tiles.",
+    description: "Drills iron ore. Requires coal as fuel — load it manually via F. Place on a dark reddish ore_iron tile. Output port faces South by default, rotate with R before placing.",
     sprite:      "#5a4a3a",
     footprint:   { w: 1, h: 1 },
     slots: [
+      { role: "fuel",   filter: ["fuel"], capacity: 50 },   // coal goes here
       { role: "output", capacity: 100 },
     ],
     ports: [
       { dx: 0, dy: 0, dir: "S", role: "output" },
     ],
-    machineTag:    "extractor_iron",  // handled by a dedicated ExtractorSystem later
-    powerDraw:     10,
-    tickIntervalMs: 2000,  // produces one ore every 2 s
+    machineTag:    "extractor_iron",
+    interactable:  true,
+    powerDraw:     0,
+    tickIntervalMs: 2000,
   },
 
   // ── Transport Belt (1×1) ─────────────────────────────────
@@ -133,6 +139,46 @@ export const DOODADS: DoodadDef[] = [
     slots: [],
     ports: [],
     powerDraw:  0,
-    // PowerSystem will handle distribution — no machineTag.
+  },
+
+  // ── Storage Chest (2×2) ──────────────────────────────────
+  {
+    id:          "storage_chest",
+    name:        "Storage Chest",
+    description: "Accepts items from belts on all four sides. Large buffer storage.",
+    sprite:      "#5a4a2a",
+    footprint:   { w: 2, h: 2 },
+    slots: [
+      // 16 independent stacks — mixed item storage
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+      { role: "input", capacity: 500 },
+    ],
+    ports: [
+      { dx: 0, dy: 0, dir: "N", role: "input" },  // top-left from north
+      { dx: 1, dy: 0, dir: "N", role: "input" },  // top-right from north
+      { dx: 0, dy: 0, dir: "W", role: "input" },  // left from west
+      { dx: 0, dy: 1, dir: "W", role: "input" },  // bottom-left from west
+      { dx: 1, dy: 1, dir: "S", role: "input" },  // bottom-right from south
+      { dx: 0, dy: 1, dir: "S", role: "input" },  // bottom-left from south
+      { dx: 1, dy: 0, dir: "E", role: "input" },  // top-right from east
+      { dx: 1, dy: 1, dir: "E", role: "input" },  // bottom-right from east
+    ],
+    machineTag:   "storage",
+    interactable: true,
+    powerDraw:    0,
   },
 ];

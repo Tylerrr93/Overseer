@@ -23,5 +23,5 @@ export const GameConfig = Object.freeze({
 
   // Persistence
   SAVE_KEY:           "digitized_overseer_save",
-  SAVE_VERSION:       1,
+  SAVE_VERSION:       2,  // bumped: fuel slot added to iron_extractor
 });

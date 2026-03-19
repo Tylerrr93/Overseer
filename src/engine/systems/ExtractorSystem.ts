@@ -1,39 +1,36 @@
 // ============================================================
 //  src/engine/systems/ExtractorSystem.ts
 //
-//  Ticks all placed extractors. On each tick interval, if the
-//  tile beneath the extractor matches the extractor's ore type
-//  and the output slot has room, one unit is produced.
+//  Ticks all placed extractors. Each cycle:
+//    1. Check the tile under the extractor matches requiredTile.
+//    2. Check there is fuel in the fuel slot (if fuelPerCycle > 0).
+//    3. Consume fuel and produce one unit of output.
 //
-//  Designed to be extended: add new machineTag entries to
-//  EXTRACTOR_CONFIG without touching engine code.
+//  Add new extractor types in EXTRACTOR_CONFIG — no engine changes.
 // ============================================================
 
-import { sm }                 from "@engine/core/StateManager";
-import { registry }             from "@engine/core/Registry";
-import { GameConfig }           from "@engine/core/GameConfig";
-import { getAbsolutePort }      from "@engine/utils/portUtils";
+import { sm }              from "@engine/core/StateManager";
+import { registry }        from "@engine/core/Registry";
+import { GameConfig }      from "@engine/core/GameConfig";
+import { getAbsolutePort } from "@engine/utils/portUtils";
 import type { DoodadState } from "@t/state";
 import type { TileType }    from "@t/state";
 
-// ── Config table ──────────────────────────────────────────────
-// machineTag → { requiredTile, outputItemId }
-// Add new extractor types here; no engine changes needed.
-
 interface ExtractorConfig {
-  requiredTile: TileType;
-  outputItemId: string;
+  requiredTile:   TileType;
+  outputItemId:   string;
+  /** How many fuel units consumed per extraction cycle. 0 = no fuel needed. */
+  fuelPerCycle:   number;
 }
 
 const EXTRACTOR_CONFIG: Record<string, ExtractorConfig> = {
-  extractor_iron:   { requiredTile: "ore_iron",   outputItemId: "iron_ore"   },
-  extractor_copper: { requiredTile: "ore_copper",  outputItemId: "copper_ore" },
-  extractor_coal:   { requiredTile: "ore_coal",    outputItemId: "coal"       },
+  extractor_iron:   { requiredTile: "ore_iron",   outputItemId: "iron_ore",   fuelPerCycle: 1 },
+  extractor_copper: { requiredTile: "ore_copper",  outputItemId: "copper_ore", fuelPerCycle: 1 },
+  extractor_coal:   { requiredTile: "ore_coal",    outputItemId: "coal",       fuelPerCycle: 0 },
 };
 
-const CS = GameConfig.CHUNK_SIZE;
-
-// ─────────────────────────────────────────────────────────────
+const CS            = GameConfig.CHUNK_SIZE;
+const BELT_MAX_ITEMS = 4;
 
 export class ExtractorSystem {
   update(deltaMs: number): void {
@@ -51,11 +48,15 @@ export class ExtractorSystem {
   // ── Tick ──────────────────────────────────────────────────
 
   private tickExtractor(
-    doodad: DoodadState,
-    cfg:    ExtractorConfig,
+    doodad:   DoodadState,
+    cfg:      ExtractorConfig,
     interval: number,
     deltaMs:  number,
   ): void {
+    // Belt push runs every frame so items drain continuously
+    this.pushToBelt(doodad);
+
+    // Mining fires on the tick interval
     doodad.tickAccumulatorMs += deltaMs;
     if (doodad.tickAccumulatorMs < interval) return;
 
@@ -63,45 +64,68 @@ export class ExtractorSystem {
       doodad.tickAccumulatorMs -= interval;
       this.tryExtract(doodad, cfg);
     }
-
-    // Push to adjacent belt every frame (belt backpressure gates the rate)
-    this.pushToBelt(doodad);
   }
 
   private tryExtract(doodad: DoodadState, cfg: ExtractorConfig): void {
-    // 1. Power check
-    if (!doodad.powered) return;
+    const def = registry.getDoodad(doodad.defId);
 
-    // 2. Check tile under extractor origin
+    // 1. Check tile under origin is the right ore
     const tile = this.getTile(doodad.origin.tx, doodad.origin.ty);
     if (!tile || tile.type !== cfg.requiredTile) return;
 
-    // 3. Find the first output slot with room
-    const def = registry.getDoodad(doodad.defId);
+    // 2. Fuel check — find a fuel slot with enough fuel
+    if (cfg.fuelPerCycle > 0) {
+      const fuelSlotIdx = this.findFuelSlot(doodad, def.slots, cfg.fuelPerCycle);
+      if (fuelSlotIdx === -1) return; // stall — no fuel
+
+      // Consume fuel
+      const fuelSlot = doodad.inventory[fuelSlotIdx]!;
+      fuelSlot.qty -= cfg.fuelPerCycle;
+      if (fuelSlot.qty <= 0) doodad.inventory[fuelSlotIdx] = null;
+    }
+
+    // 3. Write to output slot
     for (let i = 0; i < def.slots.length; i++) {
       const slotDef = def.slots[i];
       if (!slotDef || slotDef.role !== "output") continue;
 
       const slot = doodad.inventory[i];
-      const capacity = slotDef.capacity;
-
       if (slot === null || slot === undefined) {
         doodad.inventory[i] = { itemId: cfg.outputItemId, qty: 1 };
         return;
       }
-      if (slot.itemId === cfg.outputItemId && slot.qty < capacity) {
+      if (slot.itemId === cfg.outputItemId && slot.qty < slotDef.capacity) {
         slot.qty += 1;
         return;
       }
     }
-    // Output slot full — stall (backpressure)
+    // Output full — stall (backpressure). Fuel already consumed this cycle.
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  /**
+   * Returns the index of the first fuel slot with at least `required` qty.
+   * Returns -1 if no fuel available.
+   */
+  private findFuelSlot(
+    doodad:    DoodadState,
+    slotDefs:  ReturnType<typeof registry.getDoodad>["slots"],
+    required:  number,
+  ): number {
+    for (let i = 0; i < slotDefs.length; i++) {
+      const sd = slotDefs[i];
+      if (!sd || sd.role !== "fuel") continue;
+      const slot = doodad.inventory[i];
+      if (slot && slot.qty >= required) return i;
+    }
+    return -1;
   }
 
   // ── Belt push ─────────────────────────────────────────────
 
   private pushToBelt(doodad: DoodadState): void {
     const def = registry.getDoodad(doodad.defId);
-    const BELT_MAX_ITEMS = 4;
 
     for (const port of def.ports) {
       if (port.role !== "output") continue;
@@ -110,11 +134,9 @@ export class ExtractorSystem {
       const belt = sm.getBeltAt(adjacentTile.tx, adjacentTile.ty);
       if (!belt || belt.items.length >= BELT_MAX_ITEMS) continue;
 
-      // Don't push if belt entry is occupied
       const entryBlocked = belt.items.some(item => item.progress < 0.3);
       if (entryBlocked) continue;
 
-      // Pull from output slot
       for (let i = 0; i < def.slots.length; i++) {
         const slotDef = def.slots[i];
         if (!slotDef || slotDef.role !== "output") continue;
@@ -129,7 +151,7 @@ export class ExtractorSystem {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // ── Tile lookup ───────────────────────────────────────────
 
   private getTile(tx: number, ty: number) {
     const cx = Math.floor(tx / CS);
