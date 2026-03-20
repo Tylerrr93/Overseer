@@ -46,7 +46,7 @@ export const DOODADS: DoodadDef[] = [
     ],
     machineTag:        "smelter",
     interactable:      true,
-    powerDraw:         0,
+    powerDraw:         20,   // draws from grid; falls back to coal in fuel slot
     tickIntervalMs:    500,
   },
 
@@ -131,14 +131,35 @@ export const DOODADS: DoodadDef[] = [
 
   // ── Power Node (1×1) ────────────────────────────────────
   {
-    id:          "power_node",
-    name:        "Power Node",
-    description: "Distributes electric power to nearby doodads within 8 tiles.",
-    sprite:      "#6a6a1a",
-    footprint:   { w: 1, h: 1 },
-    slots: [],
+    id:           "power_node",
+    name:         "Power Node",
+    description:  "Distributes grid power. Connects to other nodes within 6 tiles; powers machines within 4 tiles.",
+    sprite:       "#8a8a1a",
+    footprint:    { w: 1, h: 1 },
+    slots:        [],
+    ports:        [],
+    powerDraw:    0,
+    powerRadius:  4,    // tiles — machines within this range get powered
+    connectRadius: 6,   // tiles — nodes within this range join the same network
+    interactable: false,
+  },
+
+  // ── Coal Generator (2×2) ─────────────────────────────────
+  {
+    id:          "coal_generator",
+    name:        "Coal Generator",
+    description: "Burns coal to generate 500W of electricity. Load coal manually via F. Connect to Power Nodes to distribute power.",
+    sprite:      "#2a3a1a",
+    footprint:   { w: 2, h: 2 },
+    slots: [
+      { role: "fuel", filter: ["fuel"], capacity: 100 },
+    ],
     ports: [],
-    powerDraw:  0,
+    machineTag:       "generator",
+    interactable:     true,
+    powerDraw:        0,
+    powerGeneration:  500,  // watts when actively burning
+    tickIntervalMs:   500,
   },
 
   // ── Storage Chest (2×2) ──────────────────────────────────

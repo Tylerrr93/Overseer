@@ -17,6 +17,11 @@ export interface IBuildSystem {
   validate(origin: { tx: number; ty: number }, w: number, h: number): boolean;
 }
 
+export interface IPowerSystem {
+  nodeConnections: { ax: number; ay: number; bx: number; by: number }[];
+  attachments:     { mx: number; my: number; nx: number; ny: number; powered: boolean }[];
+}
+
 function rotatedFP(w: number, h: number, rot: number) {
   return (rot % 2 === 0) ? { w, h } : { w: h, h: w };
 }
@@ -47,6 +52,9 @@ export class Renderer {
   cameraY = 0;
 
   buildSystem: IBuildSystem | null = null;
+  powerSystem: IPowerSystem | null = null;
+  /** Show power grid when true (Alt held) or when placing power_node. */
+  private showPowerGrid = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -54,6 +62,10 @@ export class Renderer {
     if (!ctx) throw new Error("Could not get 2D context");
     this.ctx = ctx;
     this.ctx.imageSmoothingEnabled = false;
+
+    // Track Alt key for power grid overlay
+    window.addEventListener("keydown", e => { if (e.key === "Alt") { e.preventDefault(); this.showPowerGrid = true; } });
+    window.addEventListener("keyup",   e => { if (e.key === "Alt") this.showPowerGrid = false; });
   }
 
   resize(w: number, h: number): void {
@@ -81,6 +93,7 @@ export class Renderer {
     this.renderDoodads();
     this.renderBelts();
     this.renderBeltItems();
+    this.renderPowerGrid();
     this.renderPlayer();
 
     const inBuildMode = sm.state.player.heldItemId !== null;
@@ -320,6 +333,98 @@ export class Renderer {
         ctx.lineWidth = 0.5;
         ctx.strokeRect(ix - ITEM_SIZE / 2, iy - ITEM_SIZE / 2, ITEM_SIZE, ITEM_SIZE);
       }
+    }
+  }
+
+  // ── Power grid overlay ───────────────────────────────────
+
+  private renderPowerGrid(): void {
+    if (!this.powerSystem) return;
+
+    // Show when Alt held OR when placing/hovering a power_node
+    const heldId  = sm.state.player.heldItemId;
+    const heldDef = heldId ? registry.findDoodad(heldId) : null;
+    const holdingNode = heldDef?.id === "power_node";
+
+    if (!this.showPowerGrid && !holdingNode) return;
+
+    const { ctx } = this;
+
+    // Node-to-node connections (same network) — cyan lines
+    ctx.strokeStyle = "rgba(0, 229, 255, 0.35)";
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([4, 4]);
+    for (const conn of this.powerSystem.nodeConnections) {
+      ctx.beginPath();
+      ctx.moveTo(conn.ax, conn.ay);
+      ctx.lineTo(conn.bx, conn.by);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Machine/generator → node attachment lines
+    // Powered = yellow, unpowered = red-orange
+    for (const att of this.powerSystem.attachments) {
+      ctx.strokeStyle = att.powered
+        ? "rgba(255, 220, 0, 0.45)"
+        : "rgba(255, 80, 0, 0.35)";
+      ctx.lineWidth = 0.75;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.moveTo(att.mx, att.my);
+      ctx.lineTo(att.nx, att.ny);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Power node icons — small diamond
+    for (const doodad of Object.values(sm.state.doodads)) {
+      const def = registry.findDoodad(doodad.defId);
+      if (!def || def.id !== "power_node") continue;
+      const wx = (doodad.origin.tx + 0.5) * T;
+      const wy = (doodad.origin.ty + 0.5) * T;
+      if (!this.inView(wx - T, wy - T, T * 2, T * 2)) continue;
+
+      const r = T * 0.28;
+      ctx.fillStyle = "rgba(0, 229, 255, 0.7)";
+      ctx.strokeStyle = "rgba(0, 229, 255, 0.9)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(wx,     wy - r);
+      ctx.lineTo(wx + r, wy);
+      ctx.lineTo(wx,     wy + r);
+      ctx.lineTo(wx - r, wy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Radius ring (faint)
+      const def2 = registry.getDoodad(doodad.defId);
+      const radiusPx = (def2.powerRadius ?? 4) * T;
+      ctx.strokeStyle = "rgba(0, 229, 255, 0.08)";
+      ctx.lineWidth   = 0.5;
+      ctx.beginPath();
+      ctx.arc(wx, wy, radiusPx, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Generator status — green glow when active
+    for (const doodad of Object.values(sm.state.doodads)) {
+      const def = registry.findDoodad(doodad.defId);
+      if (!def?.powerGeneration) continue;
+      const fp  = def.footprint;
+      const wx  = (doodad.origin.tx + fp.w / 2) * T;
+      const wy  = (doodad.origin.ty + fp.h / 2) * T;
+      const isActive = doodad.fuelBurn !== null &&
+                       doodad.fuelBurn !== undefined &&
+                       (doodad.fuelBurn as { remainingMs: number }).remainingMs > 0;
+      if (!isActive) continue;
+      // Pulse ring
+      ctx.strokeStyle = "rgba(80, 255, 120, 0.5)";
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(wx, wy, T * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 

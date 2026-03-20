@@ -144,4 +144,22 @@ export interface DoodadDef {
    * e.g. a "coal_only_smelter" could list only "smelt_coal".
    */
   allowedRecipeIds?: string[];
+
+  /**
+   * Watts generated per second when this doodad is actively burning fuel.
+   * Only set on generator doodads. 0 or absent = not a generator.
+   */
+  powerGeneration?: number;
+
+  /**
+   * Tile radius within which this node can power machines and generators.
+   * Used by power_node doodads.
+   */
+  powerRadius?: number;
+
+  /**
+   * Tile radius within which this node can connect to other power nodes
+   * to form a shared network.
+   */
+  connectRadius?: number;
 }

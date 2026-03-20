@@ -53,6 +53,11 @@ export class DoodadSystem {
     this.pushOutputsToBelts(doodad, def);
     this.pullInputsFromBelts(doodad, def);
 
+    // Tick down fuel fallback burn timer each frame
+    if (doodad.fuelBurn && doodad.fuelBurn.remainingMs > 0) {
+      doodad.fuelBurn.remainingMs -= deltaMs;
+    }
+
     // Crafting logic only fires on the tick interval
     doodad.tickAccumulatorMs += deltaMs;
     if (doodad.tickAccumulatorMs < interval) return;
@@ -66,10 +71,18 @@ export class DoodadSystem {
   private runTick(doodad: DoodadState, def: DoodadDef, tickMs: number): void {
     if (!def.machineTag) return;
 
-    // Power check — cancels any in-progress work too.
-    if (def.powerDraw > 0 && !doodad.powered) {
-      doodad.crafting = null;
-      return;
+    // ── Power / fuel-fallback check ─────────────────────────
+    if (def.powerDraw > 0) {
+      if (!doodad.powered) {
+        // Not on the grid — try fuel fallback.
+        // Check any slot whose filter accepts fuel-tagged items.
+        if (!this.consumeFuelFallback(doodad, def)) {
+          // No fuel either — stall.
+          doodad.crafting = null;
+          return;
+        }
+        // Fuel consumed: allow this tick to proceed.
+      }
     }
 
     // ── If a cycle is already in progress, just advance it ──
@@ -117,6 +130,44 @@ export class DoodadSystem {
         bus.emit("doodad:craft:finish", { doodadId: doodad.id, recipeId: recipe.id });
       }
     }
+  }
+
+  // ── Fuel fallback ────────────────────────────────────────
+
+  /**
+   * Consumes 1 unit of fuel from the machine's fuel-compatible slot.
+   * "Fuel-compatible" = role is "fuel" OR filter includes "fuel".
+   * Returns true if fuel was available and consumed.
+   */
+  private consumeFuelFallback(doodad: DoodadState, def: DoodadDef): boolean {
+    // Use fuelBurn to spread one coal item over multiple ticks
+    // so a machine doesn't burn 1 coal every 500ms.
+    // 1 coal = 5000ms of fallback operation at 500ms/tick = 10 ticks.
+    const FALLBACK_BURN_MS = 5000;
+
+    if (doodad.fuelBurn && doodad.fuelBurn.remainingMs > 0) {
+      // Still burning from a previous fuel item — allow tick.
+      return true;
+    }
+
+    // Need to consume a new fuel item.
+    for (let i = 0; i < def.slots.length; i++) {
+      const sd = def.slots[i];
+      if (!sd) continue;
+      const isFuelSlot = sd.role === "fuel" ||
+        (sd.filter && sd.filter.includes("fuel"));
+      if (!isFuelSlot) continue;
+
+      const slot = doodad.inventory[i];
+      if (!slot || slot.qty <= 0) continue;
+
+      // Consume 1 fuel item and set burn timer.
+      slot.qty -= 1;
+      if (slot.qty <= 0) doodad.inventory[i] = null;
+      doodad.fuelBurn = { remainingMs: FALLBACK_BURN_MS, totalMs: FALLBACK_BURN_MS };
+      return true;
+    }
+    return false; // no fuel
   }
 
   // ── Recipe resolution ─────────────────────────────────────

@@ -156,9 +156,10 @@ export class BuildSystem {
         rotation:          placementRotation,
         inventory:         [],
         crafting:          null,
-        powered:           true,
+        powered:           false,
         tickAccumulatorMs: 0,
         pinnedRecipeId:    null,
+        fuelBurn:          null,
       });
       sm.addBelt({
         id,
@@ -174,9 +175,10 @@ export class BuildSystem {
         rotation:          placementRotation,
         inventory:         def.slots.map(() => null),
         crafting:          null,
-        powered:           def.powerDraw === 0,
+        powered:           false,  // PowerSystem sets this each frame
         tickAccumulatorMs: 0,
         pinnedRecipeId:    null,
+        fuelBurn:          null,
       });
     }
 

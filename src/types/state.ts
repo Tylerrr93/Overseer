@@ -87,11 +87,16 @@ export interface DoodadState {
   /** Accumulates leftover ms between ticks to handle uneven frame times. */
   tickAccumulatorMs: number;
   /**
-   * Player-pinned recipe ID. When set, the machine will only attempt
-   * this recipe (even if inputs are absent — it waits rather than
-   * auto-switching to another recipe). null = auto-select.
+   * Player-pinned recipe ID. null = auto-select.
    */
   pinnedRecipeId: string | null;
+  /**
+   * Active fuel burn in a generator or unpowered machine running on
+   * fuel fallback. null = not currently burning.
+   * remainingMs counts down each frame; when it hits 0 the next fuel
+   * item is consumed (or the machine stalls if no fuel).
+   */
+  fuelBurn: { remainingMs: number; totalMs: number } | null;
 }
 
 // ── Belt / Logistics ─────────────────────────────────────────

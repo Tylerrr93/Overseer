@@ -77,6 +77,7 @@ export class StateManager {
       // Migrate doodad instances
       for (const d of Object.values(this.state.doodads)) {
         if (d.pinnedRecipeId === undefined) d.pinnedRecipeId = null;
+        if (d.fuelBurn === undefined) d.fuelBurn = null;
       }
       // Note: if doodad slot counts changed (e.g. fuel slot added to extractor),
       // clear localStorage manually or the save version will handle it on next bump.
@@ -110,6 +111,10 @@ export class StateManager {
   // ── Doodad helpers ────────────────────────────────────────
 
   addDoodad(doodad: DoodadState): void {
+    // Machines always start unpowered — PowerSystem sets powered each frame.
+    // Generators also start unpowered (they generate, not consume).
+    doodad.powered  = false;
+    doodad.fuelBurn = doodad.fuelBurn ?? null;
     this.state.doodads[doodad.id] = doodad;
     bus.emit("doodad:placed", { doodadId: doodad.id });
   }
