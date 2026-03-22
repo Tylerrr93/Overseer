@@ -116,6 +116,26 @@ export const DOODADS: DoodadDef[] = [
     tickIntervalMs: 2000,
   },
 
+  // ── Coal Extractor (1×1) ─────────────────────────────────
+  {
+    id:          "coal_extractor",
+    name:        "Coal Extractor",
+    description: "Drills coal ore. Requires coal as fuel — load it manually via F. Place on a grey coal ore tile.",
+    sprite:      "#7e7e7e",
+    footprint:   { w: 1, h: 1 },
+    slots: [
+      { role: "fuel",   filter: ["fuel"], capacity: 50 },   // coal goes here
+      { role: "output", capacity: 100 },
+    ],
+    ports: [
+      { dx: 0, dy: 0, dir: "S", role: "output" },
+    ],
+    machineTag:    "extractor_coal",
+    interactable:  true,
+    powerDraw:     20,
+    tickIntervalMs: 2000,
+  },
+
   // ── Transport Belt (1×1) ─────────────────────────────────
   {
     id:          "belt_straight",
@@ -154,7 +174,9 @@ export const DOODADS: DoodadDef[] = [
     slots: [
       { role: "fuel", filter: ["fuel"], capacity: 100 },
     ],
-    ports: [],
+    ports: [
+      { dx: 0, dy: 0, dir: "W", role: "input" },
+    ],
     machineTag:       "generator",
     interactable:     true,
     powerDraw:        0,
