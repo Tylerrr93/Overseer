@@ -26,7 +26,7 @@ interface ExtractorConfig {
 const EXTRACTOR_CONFIG: Record<string, ExtractorConfig> = {
   extractor_iron:   { requiredTile: "ore_iron",   outputItemId: "iron_ore",   fuelPerCycle: 1 },
   extractor_copper: { requiredTile: "ore_copper",  outputItemId: "copper_ore", fuelPerCycle: 1 },
-  extractor_coal:   { requiredTile: "ore_coal",    outputItemId: "coal",       fuelPerCycle: 0 },
+  extractor_coal:   { requiredTile: "ore_coal",    outputItemId: "coal",       fuelPerCycle: 1 },
 };
 
 const CS            = GameConfig.CHUNK_SIZE;
@@ -73,12 +73,26 @@ export class ExtractorSystem {
     const tile = this.getTile(doodad.origin.tx, doodad.origin.ty);
     if (!tile || tile.type !== cfg.requiredTile) return;
 
-    // 2. Fuel check — find a fuel slot with enough fuel
-    if (cfg.fuelPerCycle > 0) {
+    // 2. Power / fuel check — hybrid logic mirrors DoodadSystem:
+    //    - Grid-powered (powered === true)  → skip fuel, run free
+    //    - Off-grid (powered === false)     → require fuel in slot
+    //    - powerDraw === 0                  → always require fuel (no grid option)
+    if (def.powerDraw > 0) {
+      if (!doodad.powered) {
+        // Not on the grid — fall back to fuel slot
+        if (cfg.fuelPerCycle > 0) {
+          const fuelSlotIdx = this.findFuelSlot(doodad, def.slots, cfg.fuelPerCycle);
+          if (fuelSlotIdx === -1) return; // stall — no grid, no fuel
+          const fuelSlot = doodad.inventory[fuelSlotIdx]!;
+          fuelSlot.qty -= cfg.fuelPerCycle;
+          if (fuelSlot.qty <= 0) doodad.inventory[fuelSlotIdx] = null;
+        }
+      }
+      // else: grid-powered — no fuel consumed this cycle
+    } else if (cfg.fuelPerCycle > 0) {
+      // powerDraw === 0 means this extractor is always fuel-driven (e.g. iron extractor)
       const fuelSlotIdx = this.findFuelSlot(doodad, def.slots, cfg.fuelPerCycle);
-      if (fuelSlotIdx === -1) return; // stall — no fuel
-
-      // Consume fuel
+      if (fuelSlotIdx === -1) return;
       const fuelSlot = doodad.inventory[fuelSlotIdx]!;
       fuelSlot.qty -= cfg.fuelPerCycle;
       if (fuelSlot.qty <= 0) doodad.inventory[fuelSlotIdx] = null;

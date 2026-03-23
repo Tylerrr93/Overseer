@@ -339,7 +339,7 @@ export class DoodadSystem {
       // Find a matching input slot with room
       for (let i = 0; i < def.slots.length; i++) {
         const slotDef = def.slots[i];
-        if (!slotDef || slotDef.role !== "input") continue;
+        if (!slotDef || (slotDef.role !== "input" && slotDef.role !== "fuel")) continue;
 
         // Check filter
         if (slotDef.filter && slotDef.filter.length > 0) {
