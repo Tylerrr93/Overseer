@@ -387,14 +387,15 @@ export class Renderer {
     // ── Body ────────────────────────────────────────────────
     let body: PIXI.Sprite | PIXI.AnimatedSprite;
 
+    // Use original unrotated dimensions for the texture map
+    const origW = def.footprint.w * T;
+    const origH = def.footprint.h * T;
+
     if (def.animations) {
-      // Build idle + active frame arrays.
-      // resolveTexture() falls back to a coloured placeholder if the PNG
-      // hasn't been loaded into PIXI.Assets yet.
       const idleKeys   = def.animations["idle"]   ?? [def.texture ?? def.sprite];
       const activeKeys = def.animations["active"] ?? [def.texture ?? def.sprite];
-      const idleFrames   = idleKeys.map(k => this.resolveTexture(k, pw - 4, ph - 4));
-      const activeFrames = activeKeys.map(k => this.resolveTexture(k, pw - 4, ph - 4));
+      const idleFrames   = idleKeys.map(k => this.resolveTexture(k, origW - 4, origH - 4));
+      const activeFrames = activeKeys.map(k => this.resolveTexture(k, origW - 4, origH - 4));
 
       const anim = new PIXI.AnimatedSprite(idleFrames) as DoodadAnimSprite;
       anim._idleFrames   = idleFrames;
@@ -406,12 +407,16 @@ export class Renderer {
     } else {
       // Static — use texture key if present, otherwise hex colour
       const key = def.texture ?? def.sprite;
-      body = new PIXI.Sprite(this.resolveTexture(key, pw - 4, ph - 4));
+      body = new PIXI.Sprite(this.resolveTexture(key, origW - 4, origH - 4));
     }
 
-    body.x = 2; body.y = 2;
-    body.width  = pw - 4;
-    body.height = ph - 4;
+    // Anchor to center so it rotates on its middle axis natively
+    body.anchor.set(0.5);
+    body.x = pw / 2;
+    body.y = ph / 2;
+    body.width  = origW - 4;
+    body.height = origH - 4;
+    body.rotation = rotation * (Math.PI / 2); // Rotate 0, 90, 180, or 270 degrees
     (body as PIXI.Sprite & { _isDoodadBody: boolean })._isDoodadBody = true;
     container.addChild(body);
 
