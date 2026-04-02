@@ -1,61 +1,36 @@
 // ============================================================
 //  src/game/ui/BuildUI.ts
 //  Doodad selection overlay.  Toggle with "B".
-//  Clicking a card enters Build Mode (sets heldItemId).
+//
+//  Extends UIPanel — no drag logic, no open/close boilerplate.
+//  All hardcoded pixel sizes replaced with CSS variables.
+//
+//  The build-mode HUD strip (#build-mode-hud) is a separate
+//  screen-fixed element; it is NOT part of the draggable panel.
+//  tick() is called every frame by GameLoop to keep it current.
 // ============================================================
 
-import { sm }       from "@engine/core/StateManager";
-import { bus }      from "@engine/core/EventBus";
-import { registry } from "@engine/core/Registry";
+import { UIPanel }   from "./UIPanel";
+import { sm }        from "@engine/core/StateManager";
+import { bus }       from "@engine/core/EventBus";
+import { registry }  from "@engine/core/Registry";
 
 // ── Styles ────────────────────────────────────────────────────
+//  Visual chrome unique to this panel.
+//  Uses --col-purple-* variables for the purple theme and
+//  overrides the two panel-level cascade hooks so the shared
+//  .ui-panel-header / .ui-panel-footer rules pick up the
+//  correct border and accent colour automatically.
 
 const STYLES = `
 #build-ui {
-  display: none;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 100;
-  background: rgba(8, 12, 16, 0.97);
-  border: 1px solid #2a1e3a;
-  border-radius: 4px;
-  padding: 16px;
-  min-width: 400px;
+  background: var(--col-bg);
+  box-shadow: var(--panel-shadow-purple);
   max-width: 560px;
-  font-family: monospace;
-  color: #c8d8e0;
-  box-shadow: 0 0 40px rgba(180, 100, 255, 0.07);
-  user-select: none;
-}
 
-#build-ui.open { display: block; }
-
-#build-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #2a1e3a;
-  padding-bottom: 8px;
-  cursor: grab;
-}
-#build-header:active { cursor: grabbing; }
-
-#build-header h2 {
-  font-size: 11px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: #b060ff;
-  margin: 0;
-  font-weight: normal;
-}
-
-#build-header span {
-  font-size: 9px;
-  color: #4a3a6a;
-  letter-spacing: 0.1em;
+  /* Override shared cascade hooks for the purple theme */
+  --panel-border-color: var(--col-purple-border);
+  --panel-accent-color: var(--col-purple-accent);
 }
 
 #build-grid {
@@ -65,8 +40,8 @@ const STYLES = `
 }
 
 .build-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid #2a1e3a;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--col-purple-border);
   border-radius: 3px;
   padding: 8px 6px 6px;
   display: flex;
@@ -83,7 +58,7 @@ const STYLES = `
 }
 
 .build-card.selected {
-  border-color: #b060ff;
+  border-color: var(--col-purple-accent);
   background: rgba(180, 100, 255, 0.12);
 }
 
@@ -95,28 +70,19 @@ const STYLES = `
 }
 
 .build-card .bc-name {
-  font-size: 8px;
+  font-size: var(--font-2xs);
   color: #8a78a0;
   text-align: center;
   line-height: 1.3;
 }
 
 .build-card .bc-size {
-  font-size: 7px;
-  color: #4a3a6a;
+  font-size: var(--font-xs);
+  color: var(--col-purple-dim);
 }
 
-#build-footer {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #2a1e3a;
-  font-size: 9px;
-  color: #3a2a5a;
-  letter-spacing: 0.1em;
-  text-align: center;
-}
-
-/* Build mode HUD strip */
+/* ── Build-mode HUD strip ────────────────────────────────────── */
+/*  Lives outside the draggable panel (screen-fixed, z-index 98)  */
 #build-mode-hud {
   position: fixed;
   bottom: 16px;
@@ -127,9 +93,9 @@ const STYLES = `
   border-radius: 3px;
   padding: 6px 18px;
   font-family: monospace;
-  font-size: 10px;
+  font-size: var(--font-sm);
   letter-spacing: 0.12em;
-  color: #b060ff;
+  color: var(--col-purple-accent);
   pointer-events: none;
   display: none;
   z-index: 98;
@@ -140,132 +106,125 @@ const STYLES = `
 
 function injectStyles(): void {
   if (document.getElementById("build-ui-styles")) return;
-  const style = document.createElement("style");
-  style.id = "build-ui-styles";
-  style.textContent = STYLES;
-  document.head.appendChild(style);
+  const s = document.createElement("style");
+  s.id = "build-ui-styles";
+  s.textContent = STYLES;
+  document.head.appendChild(s);
 }
 
-// ── BuildUI class ─────────────────────────────────────────────
+// ── BuildUI ───────────────────────────────────────────────────
 
-export class BuildUI {
-  private readonly panel:    HTMLElement;
-  private readonly header:   HTMLElement;
-  private readonly grid:     HTMLElement;
-  private readonly modeHud:  HTMLElement;
-  private isOpen      = false;
-  private dragging    = false;
-  private dragOffX    = 0;
-  private dragOffY    = 0;
-  private positioned  = false;
+export class BuildUI extends UIPanel {
+  private readonly grid:    HTMLElement;
+  /** Separate screen-fixed element — not part of the panel. */
+  private readonly modeHud: HTMLElement;
 
   constructor() {
+    super({
+      id:        "build-ui",
+      name:      "build",
+      minWidth:  400,
+      resizable: true,
+    });
+
     injectStyles();
 
-    // ── Panel ────────────────────────────────────────────────
-    this.panel = document.createElement("div");
-    this.panel.id = "build-ui";
-    this.panel.innerHTML = `
-      <div id="build-header">
+    // ── Inner HTML ─────────────────────────────────────────────
+    //  UIStyleManager's .ui-panel-header / .ui-panel-footer rules
+    //  handle the shared chrome; the --panel-* CSS overrides
+    //  set on #build-ui ensure purple theming cascades down.
+    this.el.innerHTML = `
+      <div class="ui-panel-header" id="build-header">
         <h2>◈ Fabrication Menu</h2>
-        <span>[B] CLOSE · DRAG TO MOVE</span>
+        <span class="hint">[B] CLOSE · DRAG TO MOVE</span>
       </div>
       <div id="build-grid"></div>
-      <div id="build-footer">CLICK TO SELECT · R ROTATE · ESC / RMB CANCEL</div>
+      <div class="ui-panel-footer">
+        CLICK TO SELECT · R ROTATE · ESC / RMB CANCEL
+      </div>
     `;
-    document.body.appendChild(this.panel);
 
-    this.header = this.panel.querySelector("#build-header")!;
-    this.grid   = this.panel.querySelector("#build-grid")!;
+    this.grid = this.el.querySelector("#build-grid")!;
 
-    // ── Build mode HUD ────────────────────────────────────────
+    // Block game-canvas events while hovering the panel
+    this.el.addEventListener("mousedown", e => e.stopPropagation());
+    this.el.addEventListener("click",     e => e.stopPropagation());
+
+    // Wire header as drag handle
+    this.bindDragHandle(this.el.querySelector("#build-header")!);
+
+    // ── Build-mode HUD (separate element, not in panel) ────────
     this.modeHud = document.createElement("div");
     this.modeHud.id = "build-mode-hud";
     document.body.appendChild(this.modeHud);
 
-    // ── Bindings ─────────────────────────────────────────────
-    this.bindDrag();
-
+    // ── Key bindings ───────────────────────────────────────────
     window.addEventListener("keydown", e => {
-      if (e.key === "b" || e.key === "B") {
-        e.preventDefault();
-        this.toggle();
-      }
-      // Keep HUD in sync when rotation changes
-      if ((e.key === "r" || e.key === "R") && sm.state.player.heldItemId) {
-        this.updateHud();
-      }
-      if (e.key === "Escape") {
-        this.close();
-        this.updateHud();
+      switch (e.key) {
+        case "b":
+        case "B":
+          e.preventDefault();
+          this.toggle();
+          break;
+
+        case "r":
+        case "R":
+          // BuildSystem also handles R; we just keep the HUD in sync.
+          if (sm.state.player.heldItemId) {
+            sm.state.player.placementRotation =
+              (sm.state.player.placementRotation + 1) % 4;
+            this.updateHud();
+          }
+          break;
+
+        case "Escape":
+          // Close the panel.  BuildSystem's own Escape handler clears
+          // heldItemId; updateHud() sees the cleared state immediately
+          // because both handlers fire in the same event dispatch.
+          this.close();
+          this.updateHud();
+          break;
       }
     });
 
-    // Update HUD when right-click clears build mode
+    // Right-click may clear build mode (handled by BuildSystem).
+    // We only need to refresh the HUD strip on the next frame.
     window.addEventListener("contextmenu", () => {
       requestAnimationFrame(() => this.updateHud());
     });
 
-    // Close when another panel opens
+    // Close when another panel requests all panels to close
     bus.on("ui:close-panels", ({ except }) => {
       if (except !== "build") this.close();
     });
   }
 
-  // ── Drag (same pattern as InventoryUI) ───────────────────────
+  // ── UIPanel hooks ──────────────────────────────────────────────
 
-  private bindDrag(): void {
-    this.header.addEventListener("mousedown", e => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      this.dragging = true;
-
-      if (!this.positioned) {
-        const rect = this.panel.getBoundingClientRect();
-        this.panel.style.transform = "none";
-        this.panel.style.left = `${rect.left}px`;
-        this.panel.style.top  = `${rect.top}px`;
-        this.positioned = true;
-      }
-
-      const rect = this.panel.getBoundingClientRect();
-      this.dragOffX = e.clientX - rect.left;
-      this.dragOffY = e.clientY - rect.top;
-    });
-
-    window.addEventListener("mousemove", e => {
-      if (!this.dragging) return;
-      const margin = 8;
-      const pw = this.panel.offsetWidth;
-      const ph = this.panel.offsetHeight;
-      const left = Math.max(margin, Math.min(window.innerWidth  - pw - margin, e.clientX - this.dragOffX));
-      const top  = Math.max(margin, Math.min(window.innerHeight - ph - margin, e.clientY - this.dragOffY));
-      this.panel.style.left = `${left}px`;
-      this.panel.style.top  = `${top}px`;
-    });
-
-    window.addEventListener("mouseup", () => { this.dragging = false; });
+  /** Render the doodad card grid each time the panel opens. */
+  protected override onOpen(): void {
+    this.renderCards();
   }
 
-  // ── Public ───────────────────────────────────────────────────
-
-  toggle(): void {
-    this.isOpen = !this.isOpen;
-    this.panel.classList.toggle("open", this.isOpen);
-    if (this.isOpen) this.render();
+  /** Keep the HUD strip in sync when the panel closes. */
+  protected override onClose(): void {
+    this.updateHud();
   }
 
-  open():  void { if (!this.isOpen) this.toggle(); }
-  close(): void { if (this.isOpen)  this.toggle(); }
+  // ── Public API ─────────────────────────────────────────────────
 
-  /** Called every frame by GameLoop so the HUD stays current. */
+  /**
+   * Called every frame by GameLoop.
+   * Keeps the build-mode HUD strip current without re-rendering
+   * the full card grid.
+   */
   tick(): void {
     this.updateHud();
   }
 
-  // ── Rendering ────────────────────────────────────────────────
+  // ── Rendering ─────────────────────────────────────────────────
 
-  private render(): void {
+  private renderCards(): void {
     this.grid.innerHTML = "";
     const currentHeld = sm.state.player.heldItemId;
 
@@ -284,9 +243,9 @@ export class BuildUI {
       card.title = def.description;
 
       card.addEventListener("click", () => {
-        sm.state.player.heldItemId       = def.id;
+        sm.state.player.heldItemId        = def.id;
         sm.state.player.placementRotation = 0;
-        this.close();
+        this.close();        // also triggers onClose → updateHud
         this.updateHud();
       });
 
@@ -296,14 +255,19 @@ export class BuildUI {
 
   private updateHud(): void {
     const { heldItemId, placementRotation } = sm.state.player;
+
     if (!heldItemId) {
       this.modeHud.classList.remove("visible");
       return;
     }
-    const def = registry.findDoodad(heldItemId);
-    if (!def) { this.modeHud.classList.remove("visible"); return; }
 
-    const rotLabel = ["0°", "90°", "180°", "270°"][placementRotation] ?? "0°";
+    const def = registry.findDoodad(heldItemId);
+    if (!def) {
+      this.modeHud.classList.remove("visible");
+      return;
+    }
+
+    const rotLabel = (["0°", "90°", "180°", "270°"] as const)[placementRotation] ?? "0°";
     this.modeHud.textContent =
       `◈ BUILD MODE  ·  ${def.name.toUpperCase()}  ·  ROT ${rotLabel}  ·  [R] ROTATE  [ESC/RMB] CANCEL`;
     this.modeHud.classList.add("visible");
