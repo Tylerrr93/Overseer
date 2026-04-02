@@ -79,8 +79,6 @@ export class StateManager {
         if (d.pinnedRecipeId === undefined) d.pinnedRecipeId = null;
         if (d.fuelBurn === undefined) d.fuelBurn = null;
       }
-      // Note: if doodad slot counts changed (e.g. fuel slot added to extractor),
-      // clear localStorage manually or the save version will handle it on next bump.
       // ───────────────────────────────────────────────────────
       console.info("[StateManager] Game loaded.");
       return true;
@@ -111,8 +109,6 @@ export class StateManager {
   // ── Doodad helpers ────────────────────────────────────────
 
   addDoodad(doodad: DoodadState): void {
-    // Machines always start unpowered — PowerSystem sets powered each frame.
-    // Generators also start unpowered (they generate, not consume).
     doodad.powered  = false;
     doodad.fuelBurn = doodad.fuelBurn ?? null;
     this.state.doodads[doodad.id] = doodad;
@@ -155,7 +151,6 @@ export class StateManager {
   }
 
   updateCursorWorld(x: number, y: number): void {
-    // Guard against stale saves loaded before cursorWorldPos existed
     if (!this.state.player.cursorWorldPos) {
       this.state.player.cursorWorldPos = { x, y };
     } else {
@@ -164,9 +159,21 @@ export class StateManager {
     }
   }
 
-  /** Add items to player inventory. Returns overflow qty. */
+  /**
+   * Add items to player inventory. Returns overflow qty (items that
+   * didn't fit).  Emits "inventory:changed" whenever at least one
+   * item was successfully inserted so all open inventory panels
+   * refresh automatically — regardless of which system called this.
+   */
   givePlayerItem(itemId: string, qty: number): number {
-    return this._insertIntoInventory(this.state.player.inventory.slots, itemId, qty);
+    const overflow = this._insertIntoInventory(
+      this.state.player.inventory.slots, itemId, qty
+    );
+    if (overflow < qty) {
+      // At least some items were inserted — notify any open panels.
+      bus.emit("inventory:changed", { entityId: "player" });
+    }
+    return overflow;
   }
 
   // ── Shared inventory insert/remove ───────────────────────
@@ -186,7 +193,7 @@ export class StateManager {
     for (const slot of slots) {
       if (remaining <= 0) break;
       if (slot?.itemId === itemId) {
-        const space = 999 - slot.qty;  // 999 as generic max; Registry consulted by callers
+        const space = 999 - slot.qty;
         const toAdd = Math.min(space, remaining);
         slot.qty += toAdd;
         remaining -= toAdd;
