@@ -169,11 +169,9 @@ export class BuildUI extends UIPanel {
 
         case "r":
         case "R":
-          // BuildSystem also handles R; we just keep the HUD in sync.
+          // BuildSystem handles the actual math; we just wait for it to finish and update the HUD text.
           if (sm.state.player.heldItemId) {
-            sm.state.player.placementRotation =
-              (sm.state.player.placementRotation + 1) % 4;
-            this.updateHud();
+            requestAnimationFrame(() => this.updateHud());
           }
           break;
 
