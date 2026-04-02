@@ -120,9 +120,8 @@ export class BuildSystem {
   // ── Mouse move ────────────────────────────────────────────
 
   private onMouseMove(e: MouseEvent): void {
-    // Screen-space → world-space (undo the camera translate)
-    const worldX = e.clientX + this.renderer.cameraX;
-    const worldY = e.clientY + this.renderer.cameraY;
+    // Screen-space → world-space (undo the camera translate and zoom)
+    const { x: worldX, y: worldY } = this.renderer.screenToWorld(e.clientX, e.clientY);
     sm.updateCursorWorld(worldX, worldY);
   }
 
