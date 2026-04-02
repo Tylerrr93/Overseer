@@ -114,6 +114,7 @@ export const DOODADS: DoodadDef[] = [
     interactable:  true,
     powerDraw:     0,
     tickIntervalMs: 2000,
+    texture: "assets/extractor_1.png",
   },
 
   // ── Coal Extractor (1×1) ─────────────────────────────────
@@ -134,6 +135,10 @@ export const DOODADS: DoodadDef[] = [
     interactable:  true,
     powerDraw:     20,
     tickIntervalMs: 2000,
+    animations: {
+      idle:   ["assets/coal_extractor_idle.png"],
+      active: ["assets/coal_extractor_1.png", "assets/coal_extractor_2.png"],
+    },
   },
 
   // ── Transport Belt (1×1) ─────────────────────────────────

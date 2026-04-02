@@ -138,6 +138,8 @@ export class Renderer {
 
   // ── Texture cache ─────────────────────────────────────────
   private placeholderCache = new Map<string, PIXI.Texture>();
+  /** PNG keys currently loading — prevents duplicate PIXI.Assets.load() calls. */
+  private pendingLoads     = new Set<string>();
 
   // ─────────────────────────────────────────────────────────
 
@@ -769,18 +771,67 @@ export class Renderer {
   }
 
   /**
-   * Resolve a texture key:
-   *   1. If it's in PIXI.Assets cache (a loaded PNG) → return that.
-   *   2. If it starts with "#" → placeholder coloured rect.
-   *   3. Otherwise → grey placeholder (asset not yet loaded).
+   * Resolve a texture key — self-healing, never spams warnings.
    *
-   * To load a PNG before the game starts, call PIXI.Assets.load(url)
-   * inside an async preload step and await it before starting the loop.
+   *   1. Key is in PIXI.Assets cache (PNG already loaded) → return it.
+   *   2. Key starts with "#" → return a coloured placeholder rect.
+   *   3. Key is a PNG path not yet loaded:
+   *        - Fire one background PIXI.Assets.load() (tracked in pendingLoads).
+   *        - When it resolves, invalidate any doodad containers that use this
+   *          texture so syncDoodads() rebuilds them with the real PNG.
+   *        - Until then, return the grey placeholder so rendering never stalls.
+   *
+   * No manual preload list needed — textures load themselves on first use.
    */
   private resolveTexture(key: string, w: number, h: number): PIXI.Texture {
-    const cached = PIXI.Assets.cache.get<PIXI.Texture>(key);
-    if (cached) return cached;
+    // Use cache.has() to avoid the PixiJS "not found" console warning
+    if (PIXI.Assets.cache.has(key)) {
+      return PIXI.Assets.cache.get<PIXI.Texture>(key);
+    }
     if (key.startsWith("#")) return this.getPlaceholderTexture(key, w, h);
-    return this.getPlaceholderTexture("#666666", w, h);
+
+    // PNG path — kick off a one-shot background load
+    if (!this.pendingLoads.has(key)) {
+      this.pendingLoads.add(key);
+      PIXI.Assets.load<PIXI.Texture>(key)
+        .then(() => {
+          this.pendingLoads.delete(key);
+          // Rebuild any doodad containers that were using the placeholder
+          this.invalidateDoodadsByTexture(key);
+        })
+        .catch(() => {
+          this.pendingLoads.delete(key);
+          console.warn(`[Renderer] Texture not found: "${key}" — using placeholder.`);
+        });
+    }
+
+    // Return placeholder until load resolves
+    return this.getPlaceholderTexture("#555555", w, h);
+  }
+
+  /**
+   * Destroys and removes from the sprite map any doodad containers whose
+   * DoodadDef references `textureKey` (in texture or animations fields).
+   * syncDoodads() will recreate them next frame with the real loaded texture.
+   */
+  private invalidateDoodadsByTexture(textureKey: string): void {
+    for (const [id, container] of this.doodadSprites) {
+      const doodad = sm.getDoodad(id);
+      if (!doodad) continue;
+      const def = registry.findDoodad(doodad.defId);
+      if (!def) continue;
+
+      const usesKey =
+        def.texture === textureKey ||
+        (def.sprite === textureKey) ||
+        Object.values(def.animations ?? {}).flat().includes(textureKey);
+
+      if (usesKey) {
+        this.doodadLayer.removeChild(container);
+        container.destroy({ children: true, texture: false });
+        this.doodadSprites.delete(id);
+        this.doodadAnimState.delete(id);
+      }
+    }
   }
 }
