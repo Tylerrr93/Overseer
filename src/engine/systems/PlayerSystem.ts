@@ -67,8 +67,9 @@ export class PlayerSystem {
     window.addEventListener("keyup", e => this.keys.delete(e.key));
 
     window.addEventListener("mousedown", e => {
-      if (e.button === 0 && !panelManager.isAnyPanelOpen()) this.tryGather();
+      if (e.button === 0 && (e.target as HTMLElement).tagName === "CANVAS") this.tryGather();
     });
+    
   }
 
   /** Wire up any object that can show gather feedback. */
