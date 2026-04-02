@@ -55,4 +55,10 @@ export interface DoodadDef {
   powerGeneration?: number;
   powerRadius?: number;
   connectRadius?: number;
+  /**
+   * Whether to render the doodad's name as a text label over its sprite.
+   * Defaults to true when absent. Set to false for doodads with recognisable
+   * textures that don't need a name overlay cluttering the view.
+   */
+  showLabel?: boolean;
 }

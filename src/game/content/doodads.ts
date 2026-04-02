@@ -121,6 +121,7 @@ export const DOODADS: DoodadDef[] = [
   {
     id:          "coal_extractor",
     name:        "Coal Extractor",
+    showLabel: false,
     description: "Drills coal ore. Requires coal as fuel — load it manually via F. Place on a grey coal ore tile.",
     sprite:      "#7e7e7e",
     footprint:   { w: 1, h: 1 },

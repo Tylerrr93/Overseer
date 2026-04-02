@@ -421,12 +421,14 @@ export class Renderer {
     container.addChild(border);
 
     // ── Label ────────────────────────────────────────────────
-    const label = new PIXI.Text({
-      text:  def.name,
-      style: { fill: "#eeeeee", fontFamily: "monospace", fontSize: Math.max(8, Math.round(T * 0.28)) },
-    });
-    label.x = 4; label.y = 2;
-    container.addChild(label);
+    if (def.showLabel !== false) {
+      const label = new PIXI.Text({
+        text:  def.name,
+        style: { fill: "#eeeeee", fontFamily: "monospace", fontSize: Math.max(8, Math.round(T * 0.28)) },
+      });
+      label.x = 4; label.y = 2;
+      container.addChild(label);
+    }
 
     return container;
   }
@@ -444,8 +446,21 @@ export class Renderer {
   ): void {
     if (!def.animations) return;
 
-    const isActive = doodad.crafting !== null ||
-      (doodad.fuelBurn !== null && (doodad.fuelBurn?.remainingMs ?? 0) > 0);
+    // Extractors are ticked by ExtractorSystem, which never sets crafting or
+    // fuelBurn — it just writes directly to the output slot each cycle.
+    // For these, "active" means: grid-powered OR fuel is loaded in the fuel slot.
+    const isExtractor = def.machineTag?.startsWith("extractor_") ?? false;
+    const extractorActive = isExtractor && (
+      doodad.powered ||
+      doodad.inventory.some((slot, i) =>
+        slot !== null && slot.qty > 0 && def.slots[i]?.role === "fuel"
+      )
+    );
+
+    const isActive =
+      doodad.crafting !== null ||
+      (doodad.fuelBurn !== null && (doodad.fuelBurn?.remainingMs ?? 0) > 0) ||
+      extractorActive;
     const newState  = isActive ? "active" : "idle";
     if (this.doodadAnimState.get(id) === newState) return;
     this.doodadAnimState.set(id, newState);
