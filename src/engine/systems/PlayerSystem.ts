@@ -24,6 +24,16 @@ const TILE_TO_ITEM: Partial<Record<TileType, string>> = {
 
 const GATHER_COOLDOWN_MS = 600;
 
+/**
+ * Keys that are always forwarded to the movement set regardless
+ * of whether any UI panel is currently open.  This lets the player
+ * navigate the world while viewing the inventory, build menu, etc.
+ */
+const MOVEMENT_KEYS = new Set([
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "w", "W", "a", "A", "s", "S", "d", "D",
+]);
+
 /** Minimal interface — avoids importing the concrete InventoryUI class. */
 export interface GatherFeedbackReceiver {
   showGatherFeedback(itemName: string, qty: number): void;
@@ -38,11 +48,24 @@ export class PlayerSystem {
 
   constructor() {
     window.addEventListener("keydown", e => {
-      if (panelManager.isAnyPanelOpen()) return; // panels own the keyboard
+      // Movement keys always work — the player should be able to
+      // navigate the world even while an inventory / build panel
+      // is open.  All other keys (Space gather, build shortcuts,
+      // etc.) remain gated by the panel check below.
+      if (MOVEMENT_KEYS.has(e.key)) {
+        this.keys.add(e.key);
+        return;
+      }
+
+      // Non-movement keys are consumed by open panels.
+      if (panelManager.isAnyPanelOpen()) return;
+
       this.keys.add(e.key);
       if (e.key === " ") e.preventDefault();
     });
+
     window.addEventListener("keyup", e => this.keys.delete(e.key));
+
     window.addEventListener("mousedown", e => {
       if (e.button === 0 && !panelManager.isAnyPanelOpen()) this.tryGather();
     });
@@ -104,7 +127,8 @@ export class PlayerSystem {
     if (overflow > 0) {
       bus.emit("ui:notification", { message: "Inventory full!", severity: "warn" });
     } else {
-      bus.emit("inventory:changed", { entityId: "player" });
+      // inventory:changed is now emitted inside givePlayerItem(); the
+      // feedback toast is still shown here for the gather animation.
       const itemName = itemId.replace(/_/g, " ");
       this.feedbackUI?.showGatherFeedback(itemName, 1);
     }
