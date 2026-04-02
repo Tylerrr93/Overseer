@@ -91,6 +91,7 @@ export class Renderer {
   readonly canvas: HTMLCanvasElement;
   cameraX = 0;
   cameraY = 0;
+  zoomLevel = 1.0;
 
   buildSystem: IBuildSystem | null = null;
   powerSystem: IPowerSystem | null = null;
@@ -195,6 +196,15 @@ export class Renderer {
     window.addEventListener("keydown", e => { if (e.key === "Alt") { e.preventDefault(); this.showPowerGrid = true; } });
     window.addEventListener("keyup",   e => { if (e.key === "Alt") this.showPowerGrid = false; });
 
+    // Mouse wheel to zoom
+    this.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      // Zoom in if scrolling up (deltaY < 0), zoom out if scrolling down (deltaY > 0)
+      const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+      // Clamp the zoom between 0.5x and 3.0x
+      this.zoomLevel = Math.max(0.5, Math.min(3.0, this.zoomLevel * zoomFactor));
+    }, { passive: false });
+
     this.ready = true;
     console.info("[Renderer] PixiJS v8 ready.");
   }
@@ -209,13 +219,18 @@ export class Renderer {
   render(): void {
     if (!this.ready) return;
 
-    // Camera offset
+    // Camera offset (factoring in zoom)
     const W = this.app.screen.width;
     const H = this.app.screen.height;
-    this.cameraX = sm.state.player.pos.x - W / 2;
-    this.cameraY = sm.state.player.pos.y - H / 2;
-    this.worldContainer.x = -this.cameraX;
-    this.worldContainer.y = -this.cameraY;
+    
+    // Calculate world-space camera position
+    this.cameraX = sm.state.player.pos.x - (W / 2) / this.zoomLevel;
+    this.cameraY = sm.state.player.pos.y - (H / 2) / this.zoomLevel;
+
+    // Apply scale and offset to the main world container
+    this.worldContainer.scale.set(this.zoomLevel);
+    this.worldContainer.x = -this.cameraX * this.zoomLevel;
+    this.worldContainer.y = -this.cameraY * this.zoomLevel;
 
     // Sync persistent scene objects
     this.syncTiles();
@@ -237,6 +252,16 @@ export class Renderer {
 
     this.updateHUD();
     this.app.renderer.render(this.app.stage);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  /** Translates raw screen pixels (mouse) into world map coordinates */
+  public screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
+    return {
+      x: (screenX / this.zoomLevel) + this.cameraX,
+      y: (screenY / this.zoomLevel) + this.cameraY
+    };
   }
 
   // ── Tile sync ─────────────────────────────────────────────
@@ -678,14 +703,18 @@ export class Renderer {
     const startX = Math.floor(this.cameraX / T) * T;
     const startY = Math.floor(this.cameraY / T) * T;
 
-    for (let wx = startX; wx < this.cameraX + W + T; wx += T) {
+    // Calculate how much of the world is currently visible
+    const endX = this.cameraX + W / this.zoomLevel + T;
+    const endY = this.cameraY + H / this.zoomLevel + T;
+
+    for (let wx = startX; wx < endX; wx += T) {
       this.overlayGfx
-        .moveTo(wx, this.cameraY).lineTo(wx, this.cameraY + H)
+        .moveTo(wx, this.cameraY).lineTo(wx, endY)
         .stroke({ color: 0xffffff, alpha: 0.06, width: 0.5 });
     }
-    for (let wy = startY; wy < this.cameraY + H + T; wy += T) {
+    for (let wy = startY; wy < endY; wy += T) {
       this.overlayGfx
-        .moveTo(this.cameraX, wy).lineTo(this.cameraX + W, wy)
+        .moveTo(this.cameraX, wy).lineTo(endX, wy)
         .stroke({ color: 0xffffff, alpha: 0.06, width: 0.5 });
     }
   }
