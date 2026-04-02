@@ -183,6 +183,9 @@ export class ChestUI {
   private dragOffY    = 0;
   private positioned  = false;
 
+  /** Periodic refresh while chest is open so belt-delivered items appear. */
+  private _refreshInterval: ReturnType<typeof setInterval> | null = null;
+
   constructor() {
     injectStyles();
 
@@ -227,7 +230,7 @@ export class ChestUI {
     this.panel.querySelector("#btn-deposit-all")!
       .addEventListener("click", (e) => { e.stopPropagation(); this.depositAll(); });
 
-    // ── Slot click delegation — set ONCE, never replaced ─────
+    // ── Slot click delegation ─────────────────────────────────
     this.chestGrid.addEventListener("click", (e) => {
       if (!this.isOpen) return;
       const el = (e.target as HTMLElement).closest(".cs-slot") as HTMLElement | null;
@@ -248,15 +251,16 @@ export class ChestUI {
       else            this.depositOneFromPlayer(idx);
     });
 
-    // ── Stop mouse events from hitting the game canvas ───────
+    // ── Stop mouse events from hitting the game canvas ────────
+    // NOTE: mouseup is intentionally NOT stopped here.
+    // Stopping mouseup prevented the drag-release handler on
+    // window from firing, causing the panel to stick to the cursor.
     this.panel.addEventListener("mousedown", e => e.stopPropagation());
-    this.panel.addEventListener("mouseup",   e => e.stopPropagation());
     this.panel.addEventListener("click",     e => e.stopPropagation());
 
-    // ── Key bindings ─────────────────────────────────────────
+    // ── Key bindings ──────────────────────────────────────────
     window.addEventListener("keydown", e => {
       if (!this.isOpen) return;
-      // Capture phase + stopImmediatePropagation means NO other listener sees these keys
       if (e.key === "Escape" || e.key === "f" || e.key === "F") {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -264,9 +268,9 @@ export class ChestUI {
       }
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
-        e.stopImmediatePropagation(); // prevent InventoryUI from seeing E
+        e.stopImmediatePropagation();
       }
-    }, true); // capture phase — fires before bubble-phase listeners
+    }, true);
 
     // ── EventBus ─────────────────────────────────────────────
     bus.on("doodad:interact", ({ doodadId, defId }) => {
@@ -275,7 +279,6 @@ export class ChestUI {
       const doodad = sm.getDoodad(doodadId);
       if (!doodad) return;
       if (this.isOpen && this.openDoodad?.id === doodadId) {
-        // Same chest — toggle closed
         this.close();
       } else {
         this.openChest(doodad);
@@ -310,6 +313,8 @@ export class ChestUI {
       this.panel.style.left = `${Math.max(m, Math.min(window.innerWidth  - pw - m, e.clientX - this.dragOffX))}px`;
       this.panel.style.top  = `${Math.max(m, Math.min(window.innerHeight - ph - m, e.clientY - this.dragOffY))}px`;
     });
+    // mouseup on window always fires because we no longer stop it
+    // at the panel level — this is what fixes the "stuck drag" bug.
     window.addEventListener("mouseup", () => { this.dragging = false; });
   }
 
@@ -323,6 +328,16 @@ export class ChestUI {
     this.panel.classList.add("open");
     this.renderChestSlots();
     this.renderPlayerSlots();
+
+    // Refresh slots periodically so belt deliveries and crafting
+    // outputs appear without the player needing to close/reopen.
+    this._clearRefresh();
+    this._refreshInterval = setInterval(() => {
+      if (this.isOpen) {
+        this.renderChestSlots();
+        this.renderPlayerSlots();
+      }
+    }, 500);
   }
 
   close(): void {
@@ -330,9 +345,17 @@ export class ChestUI {
     this.isOpen = false;
     this.openDoodad = null;
     this.panel.classList.remove("open");
+    this._clearRefresh();
   }
 
-  /** Called by GameLoop each frame — only updates hint, never re-renders slots. */
+  private _clearRefresh(): void {
+    if (this._refreshInterval !== null) {
+      clearInterval(this._refreshInterval);
+      this._refreshInterval = null;
+    }
+  }
+
+  /** Called by GameLoop each frame — updates hint only. */
   tick(nearbyDoodadId: string | null): void {
     if (this.isOpen) {
       this.hint.classList.remove("visible");
@@ -456,7 +479,7 @@ export class ChestUI {
     return deposited;
   }
 
-  // ── Rendering — called explicitly, never from tick() ─────────
+  // ── Rendering ────────────────────────────────────────────────
 
   private refreshBoth(): void {
     bus.emit("inventory:changed", { entityId: "player" });

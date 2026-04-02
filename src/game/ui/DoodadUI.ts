@@ -3,14 +3,6 @@
 //
 //  Opens when the player presses F near any interactable doodad
 //  (other than storage chests, which use ChestUI).
-//
-//  Shows:
-//   - Input slots (click to take, shift-click to take all)
-//   - Fuel slots  (same)
-//   - Output slots (click to take)
-//   - Crafting progress bar
-//   - Recipe picker (all recipes for machineTag, or allowedRecipeIds)
-//   - Player inventory (click to deposit to matching role slot)
 // ============================================================
 
 import { sm }           from "@engine/core/StateManager";
@@ -65,14 +57,12 @@ const STYLES = `
 }
 #doodad-header span { font-size: 9px; color: #2a3a5a; letter-spacing: 0.1em; }
 
-/* Main two-column layout */
 #doodad-body {
   display: grid;
   grid-template-columns: 1fr 180px;
   gap: 14px;
 }
 
-/* Left: machine internals */
 #doodad-machine { display: flex; flex-direction: column; gap: 10px; }
 
 .slot-group { }
@@ -132,7 +122,6 @@ const STYLES = `
   opacity: 0.6;
 }
 
-/* Crafting progress */
 #doodad-progress {
   background: rgba(255,255,255,0.03);
   border: 1px solid #1a2a3a;
@@ -161,7 +150,6 @@ const STYLES = `
   text-align: center; padding: 2px 0;
 }
 
-/* Recipe picker */
 #doodad-recipes { }
 .recipe-label {
   font-size: 8px; letter-spacing: 0.15em;
@@ -198,7 +186,6 @@ const STYLES = `
   pointer-events: none;
 }
 
-/* Right: player inventory */
 #doodad-player { }
 #doodad-player h3 {
   font-size: 8px; letter-spacing: 0.15em;
@@ -298,14 +285,11 @@ export class DoodadUI {
     document.body.appendChild(this.panel);
     this.header = this.panel.querySelector("#doodad-header")!;
 
-    // Hint reuses the same element id as ChestUI — only one will be visible at a time
-    // Use a separate element to avoid conflicts
-    // DoodadUI has its own dedicated hint element (ChestUI has its own too)
     this.hint = document.createElement("div");
     this.hint.id = "doodad-hint";
     document.body.appendChild(this.hint);
 
-    // ── Slot delegation — set once, never replaced ────────────
+    // ── Slot delegation ───────────────────────────────────────
     this.panel.querySelector("#dg-inputs")!
       .addEventListener("click", e => this.onMachineSlotClick(e as MouseEvent, "input"));
     this.panel.querySelector("#dg-fuel")!
@@ -315,9 +299,12 @@ export class DoodadUI {
     this.panel.querySelector("#doodad-player-grid")!
       .addEventListener("click", e => this.onPlayerSlotClick(e as MouseEvent));
 
-    // ── Mouse/key isolation ───────────────────────────────────
+    // ── Mouse / key isolation ─────────────────────────────────
+    // NOTE: mouseup is intentionally NOT stopped here.
+    // Stopping mouseup at the panel level prevented the drag-release
+    // handler on window from firing, causing the panel to stick to
+    // the cursor until the mouse left the panel boundary.
     this.panel.addEventListener("mousedown", e => e.stopPropagation());
-    this.panel.addEventListener("mouseup",   e => e.stopPropagation());
     this.panel.addEventListener("click",     e => e.stopPropagation());
 
     window.addEventListener("keydown", e => {
@@ -336,7 +323,6 @@ export class DoodadUI {
     // ── EventBus ─────────────────────────────────────────────
     bus.on("doodad:interact", ({ doodadId, defId }) => {
       const def = registry.findDoodad(defId);
-      // Storage chests go to ChestUI, not here
       if (!def || def.machineTag === "storage") return;
       if (!def.interactable) return;
       const doodad = sm.getDoodad(doodadId);
@@ -379,6 +365,8 @@ export class DoodadUI {
       this.panel.style.left = `${Math.max(m, Math.min(window.innerWidth  - pw - m, e.clientX - this.dragOffX))}px`;
       this.panel.style.top  = `${Math.max(m, Math.min(window.innerHeight - ph - m, e.clientY - this.dragOffY))}px`;
     });
+    // mouseup on window always fires because we no longer stop it
+    // at the panel level — this is what fixes the "stuck drag" bug.
     window.addEventListener("mouseup", () => { this.dragging = false; });
   }
 
@@ -391,10 +379,16 @@ export class DoodadUI {
     this.isOpen = true;
     this.panel.classList.add("open");
     this.renderAll();
-    // Live-update crafting progress every 100ms
+
+    // Refresh both progress bar AND slot contents at 100ms so
+    // crafting output, belt-fed inputs, and fuel consumption are
+    // always visible while the panel is open.
     if (this.progressInterval) clearInterval(this.progressInterval);
     this.progressInterval = setInterval(() => {
-      if (this.isOpen && this.openDoodad) this.renderProgress();
+      if (this.isOpen && this.openDoodad) {
+        this.renderProgress();
+        this.renderMachineSlots();
+      }
     }, 100);
   }
 
@@ -406,14 +400,13 @@ export class DoodadUI {
     if (this.progressInterval) { clearInterval(this.progressInterval); this.progressInterval = null; }
   }
 
-  /** Called by GameLoop — updates hint only, never re-renders slots. */
+  /** Called by GameLoop — updates hint only. */
   tick(nearbyId: string | null): void {
     if (this.isOpen) { this.hint.classList.remove("visible"); return; }
     if (!nearbyId) { this.hint.classList.remove("visible"); return; }
 
     const doodad = sm.getDoodad(nearbyId);
     const def    = doodad ? registry.findDoodad(doodad.defId) : null;
-    // Storage chests show via ChestUI's separate hint — skip them here
     if (!def || def.machineTag === "storage") { this.hint.classList.remove("visible"); return; }
 
     this.hint.textContent = `[F]  OPEN ${def.name.toUpperCase()}`;
@@ -422,11 +415,8 @@ export class DoodadUI {
 
   // ── Slot click handlers ───────────────────────────────────────
 
-  private onMachineSlotClick(e: MouseEvent, role: "input" | "fuel"): void {
+  private onMachineSlotClick(e: MouseEvent, _role: "input" | "fuel"): void {
     if (!this.openDoodad) return;
-    // Clicking a machine INPUT/FUEL slot deposits from player inventory
-    // The click target should be from player grid normally,
-    // but clicking the machine slot with item takes it to player inventory
     const el = (e.target as HTMLElement).closest(".dd-slot") as HTMLElement | null;
     if (!el || !el.dataset["slotIdx"]) return;
     const idx = Number(el.dataset["slotIdx"]);
@@ -503,10 +493,6 @@ export class DoodadUI {
     this.refresh();
   }
 
-  /**
-   * Deposit `qty` of `itemId` into the machine's input or fuel slots.
-   * Respects slot filters. Returns how many were actually deposited.
-   */
   private depositToMachine(itemId: string, qty: number): number {
     if (!this.openDoodad) return 0;
     const def = registry.findDoodad(this.openDoodad.defId);
@@ -515,14 +501,12 @@ export class DoodadUI {
     const tags    = itemDef?.tags ?? [];
     let deposited = 0;
 
-    // Only deposit into input/fuel slots, not output
     const targetRoles = new Set<string>(["input", "fuel"]);
 
     // Pass 1: stack onto existing
     for (let i = 0; i < def.slots.length && deposited < qty; i++) {
       const sd = def.slots[i];
       if (!sd || !targetRoles.has(sd.role)) continue;
-      // Check filter
       if (sd.filter && sd.filter.length > 0) {
         if (!sd.filter.some(f => f === itemId || tags.includes(f))) continue;
       }
@@ -562,7 +546,6 @@ export class DoodadUI {
     const def = registry.findDoodad(this.openDoodad.defId);
     if (!def) return;
 
-    // Update title
     (this.panel.querySelector("#doodad-title") as HTMLElement).textContent =
       `◈ ${def.name}`;
 
@@ -581,7 +564,6 @@ export class DoodadUI {
     const fuelEl   = this.panel.querySelector("#dg-fuel")!;
     const outputEl = this.panel.querySelector("#dg-outputs")!;
 
-    // Group slots by role
     const byRole: Record<string, number[]> = { input: [], fuel: [], output: [], internal: [] };
     def.slots.forEach((s, i) => byRole[s.role]?.push(i));
 
@@ -589,7 +571,6 @@ export class DoodadUI {
     this.renderSlotGroup(fuelEl,   byRole["fuel"]   ?? [], "fuel",   "FUEL SLOTS");
     this.renderSlotGroup(outputEl, byRole["output"] ?? [], "output", "OUTPUT SLOTS");
 
-    // Hide empty groups
     (fuelEl   as HTMLElement).style.display = (byRole["fuel"]?.length   ?? 0) > 0 ? "" : "none";
     (inputEl  as HTMLElement).style.display = (byRole["input"]?.length  ?? 0) > 0 ? "" : "none";
     (outputEl as HTMLElement).style.display = (byRole["output"]?.length ?? 0) > 0 ? "" : "none";
@@ -679,7 +660,6 @@ export class DoodadUI {
 
     list.innerHTML = "";
 
-    // "Auto" option — clears the pin
     const autoBtn = document.createElement("button");
     const isPinned = !!this.openDoodad.pinnedRecipeId;
     autoBtn.className = "recipe-btn" + (!isPinned ? " auto-active" : "");
