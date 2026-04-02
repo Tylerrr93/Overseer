@@ -72,12 +72,12 @@ export class BuildSystem {
 
     // Left click → place (handled here; gathering is in PlayerSystem)
     window.addEventListener("mousedown", e => {
-      if (e.button === 0 && !panelManager.isAnyPanelOpen()) this.onLeftClick();
+      if (e.button === 0 && (e.target as HTMLElement).tagName === "CANVAS") this.onLeftClick();
     });
 
     // Right click → cancel build mode
     window.addEventListener("contextmenu", e => {
-      if (sm.state.player.heldItemId && !panelManager.isAnyPanelOpen()) {
+      if (sm.state.player.heldItemId && (e.target as HTMLElement).tagName === "CANVAS") {
         e.preventDefault();
         this.exitBuildMode();
       }
