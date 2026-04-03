@@ -19,6 +19,7 @@ interface BuildUITickable  { tick(): void; }
 interface ChestUITickable  { tick(nearbyId: string | null): void; }
 interface DoodadUITickable { tick(nearbyId: string | null): void; }
 interface PowerUITickable  { tick(): void; }
+interface ActionBarTickable { tick(): void; }
 
 const MAX_DELTA_MS = 200;
 
@@ -30,6 +31,9 @@ export class GameLoop {
   private chestUI:  ChestUITickable  | null = null;
   private doodadUI: DoodadUITickable | null = null;
   private powerUI:  PowerUITickable  | null = null;
+  private actionBarUI: ActionBarTickable | null = null;
+  
+  setActionBarUI(ui: ActionBarTickable): void { this.actionBarUI = ui; }
 
   constructor(
     private readonly renderer:           Renderer,
@@ -93,6 +97,7 @@ export class GameLoop {
     this.chestUI?.tick(this.interactionSystem.nearestInteractableId);
     this.doodadUI?.tick(this.interactionSystem.nearestInteractableId);
     this.powerUI?.tick();
+    this.actionBarUI?.tick();
 
     sm.state.tickCount++;
 

@@ -379,6 +379,9 @@ export class Renderer {
       container.x = doodad.origin.tx * T;
       container.y = doodad.origin.ty * T;
 
+      // Dim blueprints and doodads mid-deconstruct
+      container.alpha = doodad.construction ? 0.45 : 1.0;
+
       this.updateDoodadAnim(doodad.id, container, doodad, def);
     }
 
@@ -642,6 +645,41 @@ export class Renderer {
       this.overlayGfx.rect(wx + 4, wy + ph - 8, pw - 8, 4).fill({ color: 0x222222, alpha: 0.85 });
       this.overlayGfx.rect(wx + 4, wy + ph - 8, (pw - 8) * pct, 4).fill({ color: 0x00cc00, alpha: 1 });
     }
+
+    // ── Construction / deconstruct bars (drawn above the doodad) ──
+    for (const doodad of Object.values(sm.state.doodads)) {
+      const c = doodad.construction;
+      if (!c) continue;
+
+      const def = registry.findDoodad(doodad.defId);
+      if (!def) continue;
+
+      const fp  = rotatedFP(def.footprint.w, def.footprint.h, doodad.rotation);
+      const wx  = doodad.origin.tx * T;
+      const wy  = doodad.origin.ty * T;
+      const pw  = fp.w * T;
+      const pct = Math.min(c.progressMs / c.totalMs, 1);
+
+      // Bar sits 10 px above the doodad top edge
+      const barY = wy - 10;
+
+      // Background
+      this.overlayGfx
+        .rect(wx + 4, barY, pw - 8, 5)
+        .fill({ color: 0x111111, alpha: 0.9 });
+
+      // Fill — yellow for building, orange-red for deconstructing
+      const fillColor = c.mode === "building" ? 0xffcc00 : 0xff4422;
+      this.overlayGfx
+        .rect(wx + 4, barY, (pw - 8) * pct, 5)
+        .fill({ color: fillColor, alpha: 1 });
+
+      // Thin border
+      this.overlayGfx
+        .rect(wx + 4, barY, pw - 8, 5)
+        .stroke({ color: 0x000000, alpha: 0.5, width: 0.5 });
+    }
+
   }
 
   // ── Overlay: power grid ───────────────────────────────────
@@ -779,7 +817,7 @@ export class Renderer {
     this.hudLayer.addChild(this.hudBg);
 
     this.hudTitle = new PIXI.Text({
-      text: "DIGITIZED OVERSEER",
+      text: "OVERSEER",
       style: { fill: "#00e5ff", fontFamily: "monospace", fontSize: 11 },
     });
     this.hudTitle.x = 14; this.hudTitle.y = 12;

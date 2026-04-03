@@ -10,6 +10,7 @@ import { sm }           from "@engine/core/StateManager";
 import { panelManager } from "@engine/core/PanelManager";
 import { bus }        from "@engine/core/EventBus";
 import { GameConfig } from "@engine/core/GameConfig";
+import { CursorMode }    from "@t/state";
 import type { TileType } from "@t/state";
 
 // ── Tile → item mapping ───────────────────────────────────────
@@ -117,6 +118,8 @@ export class PlayerSystem {
 
   private tryGather(): void {
     if (this.gatherCooldownMs > 0) return;
+
+    if (sm.state.player.cursorMode !== CursorMode.None) return;
 
     const tile = this.getTileUnderPlayer();
     if (!tile) return;

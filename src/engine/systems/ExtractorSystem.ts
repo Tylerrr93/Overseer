@@ -53,6 +53,9 @@ export class ExtractorSystem {
     interval: number,
     deltaMs:  number,
   ): void {
+
+    if (doodad.construction?.mode === "building") return;
+
     // Belt push runs every frame so items drain continuously
     this.pushToBelt(doodad);
 

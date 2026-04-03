@@ -76,7 +76,8 @@ export const DOODADS: DoodadDef[] = [
     powerDraw:     50,
   },
 
-  // ── Carbon Press (2×1) ───────────────────────────────────
+  // ── Carbon Press ──────────────────────────────────────────
+  // Converts coal into carbon rods for steel and circuit production.
   {
     id:          "carbon_press",
     name:        "Carbon Press",
@@ -85,15 +86,22 @@ export const DOODADS: DoodadDef[] = [
     footprint:   { w: 2, h: 1 },
     slots: [
       { role: "input",  filter: ["fuel"], capacity: 100 },
-      { role: "output", capacity: 100 },
+      { role: "output",                   capacity: 100 },
     ],
     ports: [
-      { dx: 0, dy: 0, dir: "W", role: "input" },
+      { dx: 0, dy: 0, dir: "W", role: "input"  },
       { dx: 1, dy: 0, dir: "E", role: "output" },
     ],
-    machineTag:    "carbon_press",
-    interactable:  true,
-    powerDraw:     20,
+    machineTag:   "carbon_press",
+    interactable: true,
+    powerDraw:    20,
+    buildCost: [
+      { itemId: "iron_plate", qty: 4 },
+      { itemId: "gear",       qty: 1 },
+    ],
+    buildTimeMs:       1500,
+    deconstructTimeMs: 1500,
+    refundFraction:    0.5,
   },
 
   // ── Iron Extractor (1×1) ─────────────────────────────────
@@ -140,6 +148,7 @@ export const DOODADS: DoodadDef[] = [
       idle:   ["assets/coal_extractor_idle.png"],
       active: ["assets/coal_extractor_1.png", "assets/coal_extractor_2.png"],
     },
+    buildTimeMs: 10000,
   },
 
   // ── Transport Belt (1×1) ─────────────────────────────────

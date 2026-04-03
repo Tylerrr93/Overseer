@@ -207,7 +207,7 @@ const STYLES = `
 }
 #doodad-hint {
   position: fixed;
-  bottom: 68px; left: 50%;
+  bottom: 85px; left: 50%;
   transform: translateX(-50%);
   background: rgba(8,10,20,0.9);
   border: 1px solid #2a3a5a;

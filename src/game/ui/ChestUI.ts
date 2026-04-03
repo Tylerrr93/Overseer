@@ -143,7 +143,7 @@ const STYLES = `
 
 #chest-hint {
   position: fixed;
-  bottom: 68px; left: 50%;
+  bottom: 85px; left: 50%;
   transform: translateX(-50%);
   background: rgba(16,12,4,0.88);
   border: 1px solid #4a3a1a;
@@ -364,7 +364,8 @@ export class ChestUI {
     if (nearbyDoodadId) {
       const doodad = sm.getDoodad(nearbyDoodadId);
       const def    = doodad ? registry.findDoodad(doodad.defId) : null;
-      this.hint.textContent = `[F]  OPEN ${(def?.name ?? "STORAGE").toUpperCase()}`;
+      if (!def || def.machineTag !== "storage") { this.hint.classList.remove("visible"); return; }
+      this.hint.textContent = `[F]  OPEN ${def.name.toUpperCase()}`;
       this.hint.classList.add("visible");
     } else {
       this.hint.classList.remove("visible");

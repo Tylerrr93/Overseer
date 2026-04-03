@@ -1,18 +1,11 @@
 // ============================================================
 //  src/engine/core/StateManager.ts
-//  Single source of truth for all mutable game state.
-//
-//  Rules:
-//    • Only StateManager mutates GameState.
-//    • All mutations go through typed helper methods so the
-//      serialisation contract is always maintained.
-//    • Systems read state via `sm.state`; they call methods
-//      to write it.  They never do `sm.state.foo = bar`.
 // ============================================================
 
+import { CursorMode }   from "@t/state";
 import type { GameState, PlayerState, DoodadState, Chunk, ItemStack } from "@t/state";
-import { GameConfig } from "./GameConfig";
-import { bus } from "./EventBus";
+import { GameConfig }   from "./GameConfig";
+import { bus }          from "./EventBus";
 
 function makeEmptyInventory(slots: number): (ItemStack | null)[] {
   return Array.from({ length: slots }, () => null);
@@ -20,22 +13,23 @@ function makeEmptyInventory(slots: number): (ItemStack | null)[] {
 
 function defaultState(): GameState {
   return {
-    version: GameConfig.SAVE_VERSION,
+    version:   GameConfig.SAVE_VERSION,
     tickCount: 0,
     worldSeed: Math.floor(Math.random() * 0xffffffff),
     player: {
-      pos: { x: 0, y: 0 },
-      cursorWorldPos: { x: 0, y: 0 },
-      speed: GameConfig.PLAYER_SPEED_PX_S,
-      inventory: { slots: makeEmptyInventory(GameConfig.PLAYER_INV_SLOTS) },
-      heldItemId: null,
+      pos:               { x: 0, y: 0 },
+      cursorWorldPos:    { x: 0, y: 0 },
+      speed:             GameConfig.PLAYER_SPEED_PX_S,
+      inventory:         { slots: makeEmptyInventory(GameConfig.PLAYER_INV_SLOTS) },
+      heldItemId:        null,
       placementRotation: 0,
-      health: 100,
-      maxHealth: 100,
+      health:            100,
+      maxHealth:         100,
+      cursorMode:        CursorMode.None,
     },
-    chunks: {},
+    chunks:  {},
     doodads: {},
-    belts: {},
+    belts:   {},
   };
 }
 
@@ -46,12 +40,11 @@ export class StateManager {
     this.state = defaultState();
   }
 
-  // ── Persistence ──────────────────────────────────────────
+  // ── Persistence ───────────────────────────────────────────
 
   save(): void {
     try {
-      const json = JSON.stringify(this.state);
-      localStorage.setItem(GameConfig.SAVE_KEY, json);
+      localStorage.setItem(GameConfig.SAVE_KEY, JSON.stringify(this.state));
       console.info("[StateManager] Game saved.");
     } catch (e) {
       console.error("[StateManager] Save failed:", e);
@@ -69,17 +62,27 @@ export class StateManager {
         return false;
       }
       this.state = parsed;
-      // ── Migrate saves from earlier phases ──────────────────
+
+      // ── Field migrations ────────────────────────────────────
       const p = this.state.player;
-      if (!p.cursorWorldPos)               p.cursorWorldPos    = { x: 0, y: 0 };
+      if (!p.cursorWorldPos)                p.cursorWorldPos    = { x: 0, y: 0 };
       if (p.placementRotation === undefined) p.placementRotation = 0;
-      if (!this.state.belts)               (this.state as GameState).belts = {};
+      if (!this.state.belts)                (this.state as GameState).belts = {};
+
+      // Always reset cursor mode on load — no point restoring mid-session UI state
+      p.cursorMode = CursorMode.None;
+      p.heldItemId = null;
+
       // Migrate doodad instances
       for (const d of Object.values(this.state.doodads)) {
         if (d.pinnedRecipeId === undefined) d.pinnedRecipeId = null;
-        if (d.fuelBurn === undefined) d.fuelBurn = null;
+        if (d.fuelBurn       === undefined) d.fuelBurn       = null;
+        // In-progress constructions don't survive a reload.
+        // "building" blueprints become immediately live; "deconstructing" is cancelled.
+        delete d.construction;
       }
-      // ───────────────────────────────────────────────────────
+      // ────────────────────────────────────────────────────────
+
       console.info("[StateManager] Game loaded.");
       return true;
     } catch (e) {
@@ -92,11 +95,9 @@ export class StateManager {
     this.state = defaultState();
   }
 
-  // ── Chunk helpers ─────────────────────────────────────────
+  // ── Chunk helpers ──────────────────────────────────────────
 
-  chunkKey(cx: number, cy: number): string {
-    return `${cx},${cy}`;
-  }
+  chunkKey(cx: number, cy: number): string { return `${cx},${cy}`; }
 
   setChunk(chunk: Chunk): void {
     this.state.chunks[this.chunkKey(chunk.cx, chunk.cy)] = chunk;
@@ -106,7 +107,7 @@ export class StateManager {
     return this.state.chunks[this.chunkKey(cx, cy)];
   }
 
-  // ── Doodad helpers ────────────────────────────────────────
+  // ── Doodad helpers ─────────────────────────────────────────
 
   addDoodad(doodad: DoodadState): void {
     doodad.powered  = false;
@@ -124,17 +125,15 @@ export class StateManager {
     return this.state.doodads[id];
   }
 
-  /** Iterate all doodads — returns entries array (snapshot). */
   allDoodads(): DoodadState[] {
     return Object.values(this.state.doodads);
   }
 
-  // ── Belt helpers ──────────────────────────────────────────
+  // ── Belt helpers ───────────────────────────────────────────
 
-  /** Find a belt whose origin tile matches (tx, ty), or undefined. */
   getBeltAt(tx: number, ty: number): import("@t/state").BeltSegment | undefined {
     return Object.values(this.state.belts).find(
-      b => b.origin.tx === tx && b.origin.ty === ty
+      b => b.origin.tx === tx && b.origin.ty === ty,
     );
   }
 
@@ -142,7 +141,12 @@ export class StateManager {
     this.state.belts[belt.id] = belt;
   }
 
-  // ── Player helpers ────────────────────────────────────────
+  /** Safe to call on non-belt doodads — delete of missing key is a no-op. */
+  removeBelt(id: string): void {
+    delete this.state.belts[id];
+  }
+
+  // ── Player helpers ─────────────────────────────────────────
 
   movePlayer(x: number, y: number): void {
     this.state.player.pos.x = x;
@@ -159,56 +163,86 @@ export class StateManager {
     }
   }
 
-  /**
-   * Add items to player inventory. Returns overflow qty (items that
-   * didn't fit).  Emits "inventory:changed" whenever at least one
-   * item was successfully inserted so all open inventory panels
-   * refresh automatically — regardless of which system called this.
-   */
   givePlayerItem(itemId: string, qty: number): number {
     const overflow = this._insertIntoInventory(
-      this.state.player.inventory.slots, itemId, qty
+      this.state.player.inventory.slots, itemId, qty,
     );
     if (overflow < qty) {
-      // At least some items were inserted — notify any open panels.
       bus.emit("inventory:changed", { entityId: "player" });
     }
     return overflow;
   }
 
-  // ── Shared inventory insert/remove ───────────────────────
+  // ── Resource consumption ──────────────────────────────────
 
   /**
-   * Tries to insert `qty` of `itemId` into `slots`.
-   * Returns how many items could NOT fit (overflow).
-   */
+  * Returns true if the player's inventory contains all items
+  * in `cost` at the required quantities. Pure read — no mutation.
+  */
+  canAffordCost(cost: { itemId: string; qty: number }[]): boolean {
+    for (const req of cost) {
+      let have = 0;
+      for (const slot of this.state.player.inventory.slots) {
+        if (slot?.itemId === req.itemId) have += slot.qty;
+      }
+      if (have < req.qty) return false;
+    }
+    return true;
+  }
+
+  /**
+  * Deducts `cost` from the player's inventory.
+  * Assumes canAffordCost() already returned true — call that
+  * first. Returns true on success, false if inventory was
+  * somehow insufficient (should never happen if you check first).
+  */
+  tryConsumePlayerItems(cost: { itemId: string; qty: number }[]): boolean {
+    if (!this.canAffordCost(cost)) return false;
+
+    for (const req of cost) {
+      let toDeduct = req.qty;
+      const slots  = this.state.player.inventory.slots;
+      for (let i = 0; i < slots.length && toDeduct > 0; i++) {
+        const slot = slots[i];
+        if (!slot || slot.itemId !== req.itemId) continue;
+        const take  = Math.min(slot.qty, toDeduct);
+        slot.qty   -= take;
+        toDeduct   -= take;
+        if (slot.qty === 0) slots[i] = null;
+      }
+    }
+
+  bus.emit("inventory:changed", { entityId: "player" });
+  return true;
+}
+
+  // ── Shared inventory insert ────────────────────────────────
+
   private _insertIntoInventory(
-    slots: (ItemStack | null)[],
+    slots:  (ItemStack | null)[],
     itemId: string,
-    qty: number
+    qty:    number,
   ): number {
     let remaining = qty;
 
-    // First pass: stack into existing slots
     for (const slot of slots) {
       if (remaining <= 0) break;
       if (slot?.itemId === itemId) {
         const space = 999 - slot.qty;
         const toAdd = Math.min(space, remaining);
-        slot.qty += toAdd;
+        slot.qty  += toAdd;
         remaining -= toAdd;
       }
     }
 
-    // Second pass: fill empty slots
     for (let i = 0; i < slots.length && remaining > 0; i++) {
       if (slots[i] === null) {
-        slots[i] = { itemId, qty: Math.min(999, remaining) };
+        slots[i]   = { itemId, qty: Math.min(999, remaining) };
         remaining -= Math.min(999, remaining);
       }
     }
 
-    return remaining; // overflow
+    return remaining;
   }
 }
 

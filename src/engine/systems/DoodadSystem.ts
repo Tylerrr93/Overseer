@@ -43,6 +43,8 @@ export class DoodadSystem {
   private tickDoodad(doodad: DoodadState, deltaMs: number): void {
     const def = registry.getDoodad(doodad.defId);
 
+    if (doodad.construction?.mode === "building") return;
+
     // Extractors are handled entirely by ExtractorSystem — skip them here
     // so they don't share tickAccumulatorMs with DoodadSystem's counter.
     if (def.machineTag?.startsWith("extractor_")) return;

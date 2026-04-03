@@ -96,7 +96,7 @@ const STYLES = `
 /* ── Floating gather toasts ─────────────────────────────────── */
 #gather-toast-container {
   position: fixed;
-  bottom: 32px;
+  bottom: 124px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

@@ -1,28 +1,22 @@
 // ============================================================
 //  src/engine/systems/BuildSystem.ts
-//
-//  Responsibilities:
-//   • Track mouse → world-space cursor (accounting for camera)
-//   • R key → rotate held doodad
-//   • Left click → validate + place doodad
-//   • Escape / Right-click → exit build mode
-//   • Expose canPlace() for the Renderer to colour the ghost
 // ============================================================
 
-import { sm }           from "@engine/core/StateManager";
-import { panelManager } from "@engine/core/PanelManager";
-import { registry }   from "@engine/core/Registry";
-import { bus }        from "@engine/core/EventBus";
-import { GameConfig } from "@engine/core/GameConfig";
-import type { Renderer } from "@engine/rendering/Renderer";
-import type { DoodadDef } from "@t/content";
-import type { TilePos }   from "@t/state";
-import { rotationToDir }  from "@engine/utils/portUtils";
+import { sm }            from "@engine/core/StateManager";
+import { panelManager }  from "@engine/core/PanelManager";
+import { registry }      from "@engine/core/Registry";
+import { bus }           from "@engine/core/EventBus";
+import { GameConfig }    from "@engine/core/GameConfig";
+import { CursorMode }    from "@t/state";
+import { rotationToDir } from "@engine/utils/portUtils";
+import type { Renderer }     from "@engine/rendering/Renderer";
+import type { DoodadDef }    from "@t/content";
+import type { DoodadState, TilePos } from "@t/state";
 
 const T  = GameConfig.TILE_SIZE;
 const CS = GameConfig.CHUNK_SIZE;
 
-// ── UUID (inline, no dep) ─────────────────────────────────────
+// ── UUID ──────────────────────────────────────────────────────
 
 function uuidv4(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
@@ -33,101 +27,226 @@ function uuidv4(): string {
 
 // ── Rotation helpers ──────────────────────────────────────────
 
-/** Effective footprint dimensions after rotation (0 & 2 = original, 1 & 3 = swapped). */
-export function rotatedFootprint(def: DoodadDef, rotation: number): { w: number; h: number } {
+export function rotatedFootprint(
+  def:      DoodadDef,
+  rotation: number,
+): { w: number; h: number } {
   return (rotation % 2 === 0)
     ? { w: def.footprint.w, h: def.footprint.h }
     : { w: def.footprint.h, h: def.footprint.w };
 }
 
-/** Convert world-pixel cursor to the top-left tile of the ghost footprint. */
-function cursorToOrigin(worldX: number, worldY: number, fw: number, fh: number): TilePos {
-  // Centre the ghost on the cursor tile
-  const cursorTx = Math.floor(worldX / T);
-  const cursorTy = Math.floor(worldY / T);
+function cursorToOrigin(
+  worldX: number, worldY: number,
+  fw:     number, fh:     number,
+): TilePos {
   return {
-    tx: cursorTx - Math.floor(fw / 2),
-    ty: cursorTy - Math.floor(fh / 2),
+    tx: Math.floor(worldX / T) - Math.floor(fw / 2),
+    ty: Math.floor(worldY / T) - Math.floor(fh / 2),
   };
+}
+
+// ── Refund calculation ────────────────────────────────────────
+
+/**
+ * Compute the partial refund for a given buildCost and fraction.
+ * Each qty is floored — intentional: a cost of 1 at 50% refunds 0.
+ * Design costs ≥ 2 for items you want a guaranteed partial refund.
+ */
+function calcRefund(
+  buildCost:       { itemId: string; qty: number }[],
+  refundFraction:  number,
+): { itemId: string; qty: number }[] {
+  return buildCost
+    .map(c => ({ itemId: c.itemId, qty: Math.floor(c.qty * refundFraction) }))
+    .filter(c => c.qty > 0);
 }
 
 // ─────────────────────────────────────────────────────────────
 
 export class BuildSystem {
-  /** Cached result of last validation — Renderer reads this. */
+  /** True when the ghost footprint is over valid empty terrain. */
   lastPlacementValid = false;
+  /** True when the player can currently afford the held doodad. */
+  lastAffordable     = true;
 
-  private renderer: Renderer;
+  private readonly renderer: Renderer;
+
+  // ── Mouse state ───────────────────────────────────────────
+  private isLeftMouseDown  = false;
+  private _justPressedLeft  = false;
+  private _justPressedRight = false;
 
   constructor(renderer: Renderer) {
     this.renderer = renderer;
     this.bindEvents();
   }
 
-  // ── Event bindings ────────────────────────────────────────
+  // ── Event wiring ──────────────────────────────────────────
 
   private bindEvents(): void {
-    // Mouse move → update world cursor
-    window.addEventListener("mousemove", e => this.onMouseMove(e));
-
-    // Left click → place (handled here; gathering is in PlayerSystem)
-    window.addEventListener("mousedown", e => {
-      if (e.button === 0 && (e.target as HTMLElement).tagName === "CANVAS") this.onLeftClick();
+    window.addEventListener("mousemove", e => {
+      const { x, y } = this.renderer.screenToWorld(e.clientX, e.clientY);
+      sm.updateCursorWorld(x, y);
     });
 
-    // Right click → cancel build mode
-    window.addEventListener("contextmenu", e => {
-      if (sm.state.player.heldItemId && (e.target as HTMLElement).tagName === "CANVAS") {
-        e.preventDefault();
-        this.exitBuildMode();
+    window.addEventListener("mousedown", e => {
+      if ((e.target as HTMLElement).tagName !== "CANVAS") return;
+      if (e.button === 0) {
+        this.isLeftMouseDown  = true;
+        this._justPressedLeft = true;
       }
+    });
+
+    window.addEventListener("mouseup", e => {
+      if (e.button === 0) this.isLeftMouseDown = false;
+    });
+
+    window.addEventListener("contextmenu", e => {
+      if ((e.target as HTMLElement).tagName !== "CANVAS") return;
+      e.preventDefault();
+      this._justPressedRight = true;
     });
 
     window.addEventListener("keydown", e => {
-      switch (e.key) {
-        case "r":
-        case "R":
-          if (sm.state.player.heldItemId) {
-            sm.state.player.placementRotation =
-              (sm.state.player.placementRotation + 1) % 4;
-          }
-          break;
-        case "Escape":
-          this.exitBuildMode();
-          break;
+      if (e.key === "r" || e.key === "R") {
+        if (sm.state.player.heldItemId) {
+          sm.state.player.placementRotation =
+            (sm.state.player.placementRotation + 1) % 4;
+        }
       }
+      if (e.key === "Escape") this.exitCursorMode();
     });
   }
 
   // ── Per-frame update ──────────────────────────────────────
 
-  update(_deltaMs: number): void {
-    const { heldItemId } = sm.state.player;
-    if (!heldItemId) {
+  update(deltaMs: number): void {
+    const { cursorMode, heldItemId, placementRotation, cursorWorldPos } =
+      sm.state.player;
+
+    // -- Ghost validity + affordability check (Build mode) ----
+    if (cursorMode === CursorMode.Build && heldItemId) {
+      const def = registry.findDoodad(heldItemId);
+      if (def) {
+        const fp     = rotatedFootprint(def, placementRotation);
+        const origin = cursorToOrigin(
+          cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h,
+        );
+        this.lastPlacementValid = this.validate(origin, fp.w, fp.h);
+        this.lastAffordable     = sm.canAffordCost(def.buildCost ?? []);
+      } else {
+        this.lastPlacementValid = false;
+        this.lastAffordable     = true;
+      }
+    } else {
       this.lastPlacementValid = false;
+      this.lastAffordable     = true;
+    }
+
+    // -- Consume just-pressed events (UI panels take priority) --
+    const uiOpen = panelManager.isAnyPanelOpen();
+
+    if (this._justPressedLeft) {
+      this._justPressedLeft = false;
+      if (!uiOpen) this.handleLeftPress(cursorMode);
+    }
+
+    if (this._justPressedRight) {
+      this._justPressedRight = false;
+      if (!uiOpen) this.handleRightPress();
+    }
+
+    // -- Held left-button -------------------------------------
+    if (this.isLeftMouseDown && !uiOpen) {
+      this.handleLeftHeld(deltaMs, cursorMode);
+    }
+  }
+
+  // ── Left press ────────────────────────────────────────────
+
+  private handleLeftPress(cursorMode: CursorMode): void {
+    if (cursorMode === CursorMode.Build) this.tryPlaceBlueprint();
+    // Deconstruct: held-button handler does all the work
+  }
+
+  // ── Held left-button ──────────────────────────────────────
+
+  private handleLeftHeld(deltaMs: number, cursorMode: CursorMode): void {
+    const doodad = this.getDoodadUnderCursor();
+    if (!doodad) return;
+
+    const def = registry.findDoodad(doodad.defId);
+    if (!def) return;
+
+    // Finish a build in progress (any cursor mode can complete it)
+    if (doodad.construction?.mode === "building") {
+      doodad.construction.progressMs += deltaMs;
+      if (doodad.construction.progressMs >= doodad.construction.totalMs) {
+        delete doodad.construction;
+        bus.emit("ui:notification", {
+          message:  `${def.name} built.`,
+          severity: "info",
+        });
+      }
       return;
     }
-    const def = registry.findDoodad(heldItemId);
-    if (!def) { this.lastPlacementValid = false; return; }
 
-    const { cursorWorldPos, placementRotation } = sm.state.player;
-    const fp     = rotatedFootprint(def, placementRotation);
-    const origin = cursorToOrigin(cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h);
+    // Start / advance deconstruction
+    if (cursorMode !== CursorMode.Deconstruct) return;
 
-    this.lastPlacementValid = this.validate(origin, fp.w, fp.h);
+    if (!doodad.construction) {
+      doodad.construction = {
+        mode:       "deconstructing",
+        progressMs: 0,
+        totalMs:    def.deconstructTimeMs ?? 1000,
+      };
+    }
+
+    if (doodad.construction.mode === "deconstructing") {
+      doodad.construction.progressMs += deltaMs;
+      if (doodad.construction.progressMs >= doodad.construction.totalMs) {
+        this.completeDeconstruct(doodad, def);
+      }
+    }
   }
 
-  // ── Mouse move ────────────────────────────────────────────
+  // ── Right-click ───────────────────────────────────────────
 
-  private onMouseMove(e: MouseEvent): void {
-    // Screen-space → world-space (undo the camera translate and zoom)
-    const { x: worldX, y: worldY } = this.renderer.screenToWorld(e.clientX, e.clientY);
-    sm.updateCursorWorld(worldX, worldY);
+  private handleRightPress(): void {
+    const doodad = this.getDoodadUnderCursor();
+
+    if (doodad?.construction?.mode === "building") {
+      // Cancel placement — refund the full cost (it was just placed)
+      const def = registry.getDoodad(doodad.defId);
+      const fp  = rotatedFootprint(def, doodad.rotation);
+      this.clearTiles(doodad.origin, fp.w, fp.h);
+      sm.removeBelt(doodad.id);
+      sm.removeDoodad(doodad.id);
+
+      // Full refund since build was cancelled before completion
+      for (const cost of def.buildCost ?? []) {
+        if (cost.qty > 0) sm.givePlayerItem(cost.itemId, cost.qty);
+      }
+
+      bus.emit("ui:notification", {
+        message:  `${def.name} placement cancelled — cost refunded.`,
+        severity: "info",
+      });
+      return;
+    }
+
+    if (doodad?.construction?.mode === "deconstructing") {
+      delete doodad.construction;
+      return;
+    }
+
+    this.exitCursorMode();
   }
 
-  // ── Left click → place ────────────────────────────────────
+  // ── Blueprint placement ───────────────────────────────────
 
-  private onLeftClick(): void {
+  private tryPlaceBlueprint(): void {
     const { heldItemId, placementRotation, cursorWorldPos } = sm.state.player;
     if (!heldItemId) return;
 
@@ -135,23 +254,42 @@ export class BuildSystem {
     if (!def) return;
 
     const fp     = rotatedFootprint(def, placementRotation);
-    const origin = cursorToOrigin(cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h);
+    const origin = cursorToOrigin(
+      cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h,
+    );
 
+    // Tile check
     if (!this.validate(origin, fp.w, fp.h)) {
-      bus.emit("ui:notification", { message: "Cannot place here.", severity: "warn" });
+      bus.emit("ui:notification", {
+        message:  "Cannot place here.",
+        severity: "warn",
+      });
       return;
     }
 
-    // Build the instance
-    const id = uuidv4();
+    // Affordability check
+    const cost = def.buildCost ?? [];
+    if (!sm.canAffordCost(cost)) {
+      const missing = this.missingCostString(cost);
+      bus.emit("ui:notification", {
+        message:  `Not enough resources — need ${missing}.`,
+        severity: "warn",
+      });
+      return;
+    }
 
-    // Belts get a dual entry: doodad record (for tile blocking/rendering)
-    // + belt record (for logistics simulation).
-    if (heldItemId === "belt_straight") {
+    // Deduct cost from inventory
+    sm.tryConsumePlayerItems(cost);
+
+    const id          = uuidv4();
+    const buildTimeMs = def.buildTimeMs ?? 500;
+    const isBelt      = heldItemId === "belt_straight";
+    const isInstant   = isBelt || buildTimeMs <= 0;
+
+    if (isBelt) {
+      // Belts are always instant — no build phase
       sm.addDoodad({
-        id,
-        defId:             heldItemId,
-        origin,
+        id, defId: heldItemId, origin,
         rotation:          placementRotation,
         inventory:         [],
         crafting:          null,
@@ -161,78 +299,126 @@ export class BuildSystem {
         fuelBurn:          null,
       });
       sm.addBelt({
-        id,
-        origin,
+        id, origin,
         direction: rotationToDir(placementRotation),
         items:     [],
       });
-    } else {
+    } else if (isInstant) {
+      // buildTimeMs === 0 — place fully built immediately
       sm.addDoodad({
-        id,
-        defId:             heldItemId,
-        origin,
+        id, defId: heldItemId, origin,
         rotation:          placementRotation,
         inventory:         def.slots.map(() => null),
         crafting:          null,
-        powered:           false,  // PowerSystem sets this each frame
+        powered:           false,
         tickAccumulatorMs: 0,
         pinnedRecipeId:    null,
         fuelBurn:          null,
       });
+    } else {
+      // Place as a blueprint that must be held-to-build
+      sm.addDoodad({
+        id, defId: heldItemId, origin,
+        rotation:          placementRotation,
+        inventory:         def.slots.map(() => null),
+        crafting:          null,
+        powered:           false,
+        tickAccumulatorMs: 0,
+        pinnedRecipeId:    null,
+        fuelBurn:          null,
+        construction: {
+          mode:       "building",
+          progressMs: 0,
+          totalMs:    buildTimeMs,
+        },
+      });
     }
 
-    // Link tiles → doodad (prevents overlap)
     this.stampTiles(origin, fp.w, fp.h, id);
 
-    bus.emit("ui:notification", { message: `Placed ${def.name}.`, severity: "info" });
+    const msg = isInstant
+      ? `${def.name} placed.`
+      : `${def.name} blueprint placed — hold LMB to build.`;
+    bus.emit("ui:notification", { message: msg, severity: "info" });
+  }
+
+  // ── Deconstruct completion ────────────────────────────────
+
+  private completeDeconstruct(doodad: DoodadState, def: DoodadDef): void {
+    const refundFraction = def.refundFraction ?? 0.5;
+    const refunds        = calcRefund(def.buildCost ?? [], refundFraction);
+
+    // Refund slot contents in full
+    for (const stack of doodad.inventory) {
+      if (stack && stack.qty > 0) sm.givePlayerItem(stack.itemId, stack.qty);
+    }
+
+    // Partial cost refund
+    for (const r of refunds) {
+      sm.givePlayerItem(r.itemId, r.qty);
+    }
+
+    const fp = rotatedFootprint(def, doodad.rotation);
+    this.clearTiles(doodad.origin, fp.w, fp.h);
+    sm.removeBelt(doodad.id);
+    sm.removeDoodad(doodad.id);
+
+    const refundPct = Math.round(refundFraction * 100);
+    bus.emit("ui:notification", {
+      message:  `${def.name} deconstructed (${refundPct}% cost returned).`,
+      severity: "info",
+    });
   }
 
   // ── Validation ────────────────────────────────────────────
 
-  /**
-   * Returns true iff the w×h footprint at `origin` can be placed:
-   *  1. Every tile is in a generated chunk.
-   *  2. Every tile is passable (not water/void).
-   *  3. No tile is already occupied by another doodad.
-   */
   validate(origin: TilePos, w: number, h: number): boolean {
     for (let dy = 0; dy < h; dy++) {
       for (let dx = 0; dx < w; dx++) {
         const tile = this.getTile(origin.tx + dx, origin.ty + dy);
-        if (!tile)            return false; // chunk not generated
-        if (!tile.passable)   return false; // water / void
-        if (tile.doodadId)    return false; // already occupied
+        if (!tile)          return false;
+        if (!tile.passable) return false;
+        if (tile.doodadId)  return false;
       }
     }
     return true;
   }
 
-  // ── Tile stamping ─────────────────────────────────────────
+  // ── Tile helpers ──────────────────────────────────────────
 
-  private stampTiles(origin: TilePos, w: number, h: number, doodadId: string): void {
-    for (let dy = 0; dy < h; dy++) {
+  private stampTiles(
+    origin:   TilePos,
+    w:        number,
+    h:        number,
+    doodadId: string,
+  ): void {
+    for (let dy = 0; dy < h; dy++)
       for (let dx = 0; dx < w; dx++) {
         const tile = this.getTile(origin.tx + dx, origin.ty + dy);
         if (tile) tile.doodadId = doodadId;
       }
-    }
   }
 
-  /** Clear tile links when a doodad is removed (future use). */
   clearTiles(origin: TilePos, w: number, h: number): void {
-    for (let dy = 0; dy < h; dy++) {
+    for (let dy = 0; dy < h; dy++)
       for (let dx = 0; dx < w; dx++) {
         const tile = this.getTile(origin.tx + dx, origin.ty + dy);
         if (tile) tile.doodadId = null;
       }
-    }
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  private getDoodadUnderCursor(): DoodadState | null {
+    const { cursorWorldPos } = sm.state.player;
+    const tx   = Math.floor(cursorWorldPos.x / T);
+    const ty   = Math.floor(cursorWorldPos.y / T);
+    const tile = this.getTile(tx, ty);
+    if (!tile?.doodadId) return null;
+    return sm.getDoodad(tile.doodadId) ?? null;
+  }
 
   private getTile(tx: number, ty: number) {
-    const cx = Math.floor(tx / CS);
-    const cy = Math.floor(ty / CS);
+    const cx    = Math.floor(tx / CS);
+    const cy    = Math.floor(ty / CS);
     const chunk = sm.getChunk(cx, cy);
     if (!chunk) return null;
     const lx = ((tx % CS) + CS) % CS;
@@ -240,8 +426,29 @@ export class BuildSystem {
     return chunk.tiles[ly]?.[lx] ?? null;
   }
 
-  private exitBuildMode(): void {
-    sm.state.player.heldItemId = null;
+  // ── Helpers ───────────────────────────────────────────────
+
+  private missingCostString(
+    cost: { itemId: string; qty: number }[],
+  ): string {
+    return cost
+      .filter(c => {
+        let have = 0;
+        for (const slot of sm.state.player.inventory.slots) {
+          if (slot?.itemId === c.itemId) have += slot.qty;
+        }
+        return have < c.qty;
+      })
+      .map(c => {
+        const def = registry.findItem(c.itemId);
+        return `${c.qty}× ${def?.name ?? c.itemId}`;
+      })
+      .join(", ");
+  }
+
+  private exitCursorMode(): void {
+    sm.state.player.heldItemId        = null;
     sm.state.player.placementRotation = 0;
+    sm.state.player.cursorMode        = CursorMode.None;
   }
 }

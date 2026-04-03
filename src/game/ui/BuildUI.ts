@@ -14,6 +14,7 @@ import { UIPanel }   from "./UIPanel";
 import { sm }        from "@engine/core/StateManager";
 import { bus }       from "@engine/core/EventBus";
 import { registry }  from "@engine/core/Registry";
+import { CursorMode } from "@t/state";
 
 // ── Styles ────────────────────────────────────────────────────
 //  Visual chrome unique to this panel.
@@ -243,6 +244,7 @@ export class BuildUI extends UIPanel {
       card.addEventListener("click", () => {
         sm.state.player.heldItemId        = def.id;
         sm.state.player.placementRotation = 0;
+        sm.state.player.cursorMode        = CursorMode.Build;  // ← add this
         this.close();        // also triggers onClose → updateHud
         this.updateHud();
       });

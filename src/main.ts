@@ -27,6 +27,7 @@ import { BuildUI }                  from "@game/ui/BuildUI";
 import { ChestUI }                  from "@game/ui/ChestUI";
 import { DoodadUI }                 from "@game/ui/DoodadUI";
 import { PowerUI }                  from "@game/ui/PowerUI";
+import { ActionBarUI }              from "@game/ui/ActionBarUI";
 
 async function main() {
   // ── 1. Content ─────────────────────────────────────────────
@@ -65,6 +66,7 @@ async function main() {
   const chestUI     = new ChestUI();
   const doodadUI    = new DoodadUI();
   const powerUI     = new PowerUI();
+  const actionBarUI = new ActionBarUI();
   powerUI.setPowerSystem(powerSystem);
   playerSystem.setFeedbackUI(inventoryUI);
 
@@ -89,6 +91,7 @@ async function main() {
   loop.setChestUI(chestUI);
   loop.setDoodadUI(doodadUI);
   loop.setPowerUI(powerUI);
+  loop.setActionBarUI(actionBarUI);
   loop.start();
 
   // ── 8. Debug ───────────────────────────────────────────────

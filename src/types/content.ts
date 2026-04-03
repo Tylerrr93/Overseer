@@ -1,3 +1,7 @@
+// ============================================================
+//  src/types/content.ts
+// ============================================================
+
 export interface ItemStack { itemId: string; qty: number; }
 
 export interface ItemDef {
@@ -30,19 +34,7 @@ export interface DoodadPort {
 export interface DoodadDef {
   id: string; name: string; description: string;
   sprite: string;
-  /**
-   * Optional texture key for a loaded PNG asset.
-   * Falls back to `sprite` hex colour if absent.
-   * Example: "assets/smelter.png"
-   */
   texture?: string;
-  /**
-   * Per-state frame arrays for AnimatedSprite support.
-   * Keys: "idle" | "active" (extend as needed).
-   * Values: array of texture keys — PNG paths or hex colours.
-   * Example: { idle: ["assets/smelter_idle.png"], active: ["assets/smelter_a1.png", "assets/smelter_a2.png"] }
-   * When absent, the renderer uses a static placeholder rect.
-   */
   animations?: Record<string, string[]>;
   footprint: DoodadFootprint;
   slots: SlotDef[];
@@ -55,10 +47,21 @@ export interface DoodadDef {
   powerGeneration?: number;
   powerRadius?: number;
   connectRadius?: number;
-  /**
-   * Whether to render the doodad's name as a text label over its sprite.
-   * Defaults to true when absent. Set to false for doodads with recognisable
-   * textures that don't need a name overlay cluttering the view.
-   */
   showLabel?: boolean;
+  /** ms to hold LMB after placing a blueprint before it goes live. Default 500. */
+  buildTimeMs?: number;
+  /** ms to hold LMB (Deconstruct mode) before the machine is removed. Default 500. */
+  deconstructTimeMs?: number;
+  /**
+   * Items consumed from player inventory when the blueprint is placed.
+   * Empty array (or omitted) = free to place.
+   */
+  buildCost?:        RecipeIngredient[];
+  /**
+   * Fraction of buildCost returned on deconstruct. 0.0–1.0.
+   * Default 0.5 (50% refund). Each ingredient quantity is
+   * floored — a cost of 1 at 0.5 refunds 0, so set costs ≥ 2
+   * for items you want a guaranteed partial refund on.
+   */
+  refundFraction?:   number;
 }
