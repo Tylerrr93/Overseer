@@ -226,7 +226,7 @@ export class InventoryUI extends UIPanel {
   // ── Public API ─────────────────────────────────────────────────
 
   /** Convenience for external callers (e.g. main.ts debug export). */
-  isCurrentlyOpen(): boolean { return this.isOpen; }
+  override isCurrentlyOpen(): boolean { return this.isOpen; }
 
   /**
    * Spawn a floating toast that rises and fades out.

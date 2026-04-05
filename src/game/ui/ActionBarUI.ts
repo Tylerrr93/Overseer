@@ -336,10 +336,11 @@ export class ActionBarUI {
         const doodadDef: DoodadDef | undefined =
           registry.findDoodad(itemDef.placesDoodadId);
         if (doodadDef) {
+          const tex = doodadDef.texture ?? doodadDef.animations?.idle?.[0];
           return {
             name:        doodadDef.name,
             sprite:      doodadDef.sprite,
-            texture:     doodadDef.texture ?? doodadDef.animations?.idle?.[0],
+            ...(tex !== undefined && { texture: tex }),
             description: doodadDef.description,
           };
         }
@@ -350,10 +351,11 @@ export class ActionBarUI {
     // Try as a direct doodad ID (legacy default-loadout entries)
     const doodadDef: DoodadDef | undefined = registry.findDoodad(id);
     if (doodadDef) {
+      const tex = doodadDef.texture ?? doodadDef.animations?.idle?.[0];
       return {
         name:        doodadDef.name,
         sprite:      doodadDef.sprite,
-        texture:     doodadDef.texture ?? doodadDef.animations?.idle?.[0],
+        ...(tex !== undefined && { texture: tex }),
         description: doodadDef.description,
       };
     }
