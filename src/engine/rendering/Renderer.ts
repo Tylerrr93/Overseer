@@ -813,7 +813,7 @@ export class Renderer {
 
   private buildHUD(): void {
     this.hudBg = new PIXI.Graphics();
-    this.hudBg.rect(8, 8, 220, 44).fill({ color: 0x000000, alpha: 0.55 });
+    this.hudBg.rect(8, 8, 96, 44).fill({ color: 0x000000, alpha: 0.55 });
     this.hudLayer.addChild(this.hudBg);
 
     this.hudTitle = new PIXI.Text({
