@@ -176,8 +176,8 @@ const STYLES = `
   box-shadow: 0 0 8px rgba(0, 229, 255, 0.18);
 }
 
-/* ── Power toggle button ─────────────────────────────────────── */
-.ab-power-btn {
+/* ── Tall icon buttons (power toggle + system menu) ──────────── */
+.ab-icon-btn {
   width: 36px;
   height: 54px;
   background: rgba(255, 255, 255, 0.03);
@@ -190,22 +190,31 @@ const STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 8px;
   flex-shrink: 0;
   transition: border-color 0.1s, background 0.1s, color 0.1s;
   box-sizing: border-box;
 }
-.ab-power-btn:hover {
+.ab-icon-btn + .ab-icon-btn,
+.ab-ui-btns + .ab-icon-btn {
+  margin-left: 4px;
+}
+/* First icon button after the slots gets extra left margin */
+.ab-slot ~ .ab-icon-btn:first-of-type { margin-left: 8px; }
+
+.ab-icon-btn:hover {
   border-color: #1a4a5a;
   background: rgba(0, 229, 255, 0.06);
   color: #00b0c8;
 }
-.ab-power-btn.active {
+.ab-icon-btn.active {
   border-color: #00e5ff;
   background: rgba(0, 229, 255, 0.13);
   color: #00e5ff;
   box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
 }
+
+/* Legacy alias — keep in case external CSS references it */
+.ab-power-btn { /* intentionally empty — replaced by .ab-icon-btn */ }
 `;
 
 function injectStyles(): void {
@@ -229,11 +238,14 @@ export class ActionBarUI {
   // ── Optional panel refs for shortcut buttons ──────────────
   private inventoryPanel: UIPanel | null = null;
   private buildPanel:     UIPanel | null = null;
+  private systemPanel:    UIPanel | null = null;
   private invBtn!:        HTMLButtonElement;
   private buildBtn!:      HTMLButtonElement;
+  private systemBtn!:     HTMLButtonElement;
 
   setInventoryPanel(panel: UIPanel): void { this.inventoryPanel = panel; }
   setBuildPanel(panel: UIPanel):     void { this.buildPanel     = panel; }
+  setSystemPanel(panel: UIPanel):    void { this.systemPanel    = panel; }
 
   constructor() {
     injectStyles();
@@ -245,6 +257,7 @@ export class ActionBarUI {
     this.buildSlots();
     this.buildPowerButton();
     this.buildUIButtons();
+    this.buildSystemButton();
     this.bindKeys();
 
     // Keep button in sync with whoever emits the event (Alt key, etc.)
@@ -258,13 +271,27 @@ export class ActionBarUI {
 
   private buildPowerButton(): void {
     this.powerBtn = document.createElement("button");
-    this.powerBtn.className = "ab-power-btn";
+    this.powerBtn.className = "ab-icon-btn";
+    this.powerBtn.style.marginLeft = "8px";
     this.powerBtn.title = "Toggle power overlay [Alt]";
     this.powerBtn.textContent = "⚡";
     this.powerBtn.addEventListener("click", () => {
       bus.emit("power:overlay:toggle", {});
     });
     this.el.appendChild(this.powerBtn);
+  }
+
+  // ── System / settings button ──────────────────────────────
+
+  private buildSystemButton(): void {
+    this.systemBtn = document.createElement("button");
+    this.systemBtn.className = "ab-icon-btn";
+    this.systemBtn.style.marginLeft = "4px";
+    this.systemBtn.title = "System menu";
+    this.systemBtn.textContent = "⚙";
+    this.systemBtn.style.fontSize = "16px";
+    this.systemBtn.addEventListener("click", () => this.systemPanel?.toggle());
+    this.el.appendChild(this.systemBtn);
   }
 
   // ── UI shortcut buttons ───────────────────────────────────
@@ -512,7 +539,8 @@ export class ActionBarUI {
     }
 
     // Keep UI shortcut buttons in sync with their panel's open state
-    this.invBtn?.classList.toggle("active",   this.inventoryPanel?.isCurrentlyOpen() ?? false);
-    this.buildBtn?.classList.toggle("active", this.buildPanel?.isCurrentlyOpen()     ?? false);
+    this.invBtn?.classList.toggle("active",    this.inventoryPanel?.isCurrentlyOpen() ?? false);
+    this.buildBtn?.classList.toggle("active",  this.buildPanel?.isCurrentlyOpen()     ?? false);
+    this.systemBtn?.classList.toggle("active", this.systemPanel?.isCurrentlyOpen()    ?? false);
   }
 }

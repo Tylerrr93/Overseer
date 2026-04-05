@@ -22,6 +22,8 @@ export const GameConfig = Object.freeze({
   PLAYER_INV_SLOTS:      24,
 
   // Persistence
-  SAVE_KEY:           "digitized_overseer_save",
-  SAVE_VERSION:       2,  // bumped: fuel slot added to iron_extractor
+  SAVE_KEY:              "digitized_overseer_save",
+  SAVE_TS_KEY:           "digitized_overseer_save_ts",   // unix-ms timestamp of last save
+  SAVE_VERSION:          2,   // bumped: fuel slot added to iron_extractor
+  AUTOSAVE_INTERVAL_MS:  60_000,
 });

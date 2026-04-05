@@ -28,6 +28,7 @@ import { ChestUI }                  from "@game/ui/ChestUI";
 import { DoodadUI }                 from "@game/ui/DoodadUI";
 import { PowerUI }                  from "@game/ui/PowerUI";
 import { ActionBarUI }              from "@game/ui/ActionBarUI";
+import { SystemMenuUI }            from "@game/ui/SystemMenuUI";
 
 async function main() {
   // ── 1. Content ─────────────────────────────────────────────
@@ -61,15 +62,17 @@ async function main() {
   renderer.powerSystem = powerSystem;
 
   // ── 4. UI ──────────────────────────────────────────────────
-  const inventoryUI = new InventoryUI();
-  const buildUI     = new BuildUI();
-  const chestUI     = new ChestUI();
-  const doodadUI    = new DoodadUI();
-  const powerUI     = new PowerUI();
-  const actionBarUI = new ActionBarUI();
+  const inventoryUI  = new InventoryUI();
+  const buildUI      = new BuildUI();
+  const chestUI      = new ChestUI();
+  const doodadUI     = new DoodadUI();
+  const powerUI      = new PowerUI();
+  const systemMenuUI = new SystemMenuUI();
+  const actionBarUI  = new ActionBarUI();
   powerUI.setPowerSystem(powerSystem);
   actionBarUI.setInventoryPanel(inventoryUI);
   actionBarUI.setBuildPanel(buildUI);
+  actionBarUI.setSystemPanel(systemMenuUI);
   playerSystem.setFeedbackUI(inventoryUI);
 
   // ── 5. State ───────────────────────────────────────────────
@@ -80,7 +83,7 @@ async function main() {
   }
 
   // ── 6. Auto-save ───────────────────────────────────────────
-  setInterval(() => sm.save(), 60_000);
+  setInterval(() => sm.save(), GameConfig.AUTOSAVE_INTERVAL_MS);
 
   // ── 7. Game loop ───────────────────────────────────────────
   const loop = new GameLoop(
@@ -100,6 +103,7 @@ async function main() {
   (window as unknown as Record<string, unknown>).__game = {
     sm, registry, loop, inventoryUI, buildUI, chestUI, doodadUI,
     buildSystem, interactionSystem, powerSystem, generatorSystem, powerUI,
+    systemMenuUI,
   };
 
   console.info("🌍 Digitized Overseer — PixiJS v8 renderer booted.");

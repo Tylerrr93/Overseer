@@ -44,7 +44,9 @@ export class StateManager {
 
   save(): void {
     try {
-      localStorage.setItem(GameConfig.SAVE_KEY, JSON.stringify(this.state));
+      const json = JSON.stringify(this.state);
+      localStorage.setItem(GameConfig.SAVE_KEY,    json);
+      localStorage.setItem(GameConfig.SAVE_TS_KEY, String(Date.now()));
       console.info("[StateManager] Game saved.");
     } catch (e) {
       console.error("[StateManager] Save failed:", e);
@@ -56,39 +58,51 @@ export class StateManager {
     try {
       const raw = localStorage.getItem(GameConfig.SAVE_KEY);
       if (!raw) return false;
-      const parsed = JSON.parse(raw) as GameState;
-      if (parsed.version !== GameConfig.SAVE_VERSION) {
-        console.warn("[StateManager] Save version mismatch — starting fresh.");
-        return false;
-      }
-      this.state = parsed;
-
-      // ── Field migrations ────────────────────────────────────
-      const p = this.state.player;
-      if (!p.cursorWorldPos)                p.cursorWorldPos    = { x: 0, y: 0 };
-      if (p.placementRotation === undefined) p.placementRotation = 0;
-      if (!this.state.belts)                (this.state as GameState).belts = {};
-
-      // Always reset cursor mode on load — no point restoring mid-session UI state
-      p.cursorMode = CursorMode.None;
-      p.heldItemId = null;
-
-      // Migrate doodad instances
-      for (const d of Object.values(this.state.doodads)) {
-        if (d.pinnedRecipeId === undefined) d.pinnedRecipeId = null;
-        if (d.fuelBurn       === undefined) d.fuelBurn       = null;
-        // In-progress constructions don't survive a reload.
-        // "building" blueprints become immediately live; "deconstructing" is cancelled.
-        delete d.construction;
-      }
-      // ────────────────────────────────────────────────────────
-
-      console.info("[StateManager] Game loaded.");
-      return true;
+      return this._applyRaw(raw);
     } catch (e) {
       console.error("[StateManager] Load failed:", e);
       return false;
     }
+  }
+
+  /**
+   * Returns the current game state serialized to a JSON string.
+   * Does NOT write to localStorage — use save() for persistence.
+   */
+  exportJSON(): string {
+    return JSON.stringify(this.state, null, 2);
+  }
+
+  /**
+   * Parses a raw JSON string, runs migrations, and replaces the
+   * running state.  Also writes to localStorage so a page reload
+   * picks it up.  Returns true on success.
+   */
+  importJSON(raw: string): boolean {
+    try {
+      const ok = this._applyRaw(raw);
+      if (ok) {
+        localStorage.setItem(GameConfig.SAVE_KEY,    raw);
+        localStorage.setItem(GameConfig.SAVE_TS_KEY, String(Date.now()));
+        console.info("[StateManager] Save imported.");
+      }
+      return ok;
+    } catch (e) {
+      console.error("[StateManager] Import failed:", e);
+      return false;
+    }
+  }
+
+  /**
+   * Removes the save from localStorage and resets to a fresh state.
+   * The caller is responsible for triggering a page reload so that
+   * all in-memory system state is also cleared.
+   */
+  wipe(): void {
+    localStorage.removeItem(GameConfig.SAVE_KEY);
+    localStorage.removeItem(GameConfig.SAVE_TS_KEY);
+    this.state = defaultState();
+    console.info("[StateManager] Save wiped.");
   }
 
   reset(): void {
@@ -212,11 +226,50 @@ export class StateManager {
       }
     }
 
-  bus.emit("inventory:changed", { entityId: "player" });
-  return true;
-}
+    bus.emit("inventory:changed", { entityId: "player" });
+    return true;
+  }
 
-  // ── Shared inventory insert ────────────────────────────────
+  // ── Private helpers ────────────────────────────────────────
+
+  /**
+   * Core deserialization path shared by load() and importJSON().
+   * Parses, version-checks, migrates, and applies the state.
+   */
+  private _applyRaw(raw: string): boolean {
+    const parsed = JSON.parse(raw) as GameState;
+    if (parsed.version !== GameConfig.SAVE_VERSION) {
+      console.warn(
+        `[StateManager] Save version mismatch (got ${parsed.version}, ` +
+        `expected ${GameConfig.SAVE_VERSION}) — ignoring.`,
+      );
+      return false;
+    }
+    this.state = parsed;
+
+    // ── Field migrations ──────────────────────────────────────
+    const p = this.state.player;
+    if (!p.cursorWorldPos)                p.cursorWorldPos    = { x: 0, y: 0 };
+    if (p.placementRotation === undefined) p.placementRotation = 0;
+    if (!this.state.belts)                (this.state as GameState).belts = {};
+
+    // Always reset cursor mode on load — no point restoring mid-session UI state
+    p.cursorMode = CursorMode.None;
+    p.heldItemId = null;
+
+    // Migrate doodad instances
+    for (const d of Object.values(this.state.doodads)) {
+      if (d.pinnedRecipeId === undefined) d.pinnedRecipeId = null;
+      if (d.fuelBurn       === undefined) d.fuelBurn       = null;
+      // In-progress constructions don't survive a reload.
+      // "building" blueprints become immediately live; "deconstructing" is cancelled.
+      delete d.construction;
+    }
+    // ─────────────────────────────────────────────────────────
+
+    console.info("[StateManager] State applied from save data.");
+    return true;
+  }
 
   private _insertIntoInventory(
     slots:  (ItemStack | null)[],
