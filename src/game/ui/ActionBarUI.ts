@@ -11,7 +11,10 @@
 
 import { sm }         from "@engine/core/StateManager";
 import { registry }   from "@engine/core/Registry";
+import { bus }        from "@engine/core/EventBus";
 import { CursorMode } from "@t/state";
+import type { UIPanel } from "./UIPanel";
+import type { DoodadDef, ItemDef } from "@t/content";
 
 // ─────────────────────────────────────────────────────────────
 // Slot config.  null = empty.  "deconstruct" = sentinel value.
@@ -74,6 +77,12 @@ const STYLES = `
   box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
 }
 
+.ab-slot.drag-over {
+  border-color: #00e5ff !important;
+  background: rgba(0, 229, 255, 0.15) !important;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
 .ab-slot.ab-deconstruct { border-color: #3a1a0a; }
 .ab-slot.ab-deconstruct:hover {
   border-color: #8a2a0a;
@@ -128,6 +137,75 @@ const STYLES = `
   color: #1a2a3a;
   pointer-events: none;
 }
+
+/* ── Stacked UI shortcut buttons (inventory + fabrication) ─────── */
+.ab-ui-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.ab-ui-btn {
+  width: 36px;
+  /* 2 × 25px + 4px gap = 54px — matches slot height exactly */
+  height: 25px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #1a2a3a;
+  border-radius: 3px;
+  color: #3a6a7a;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+  box-sizing: border-box;
+}
+.ab-ui-btn:hover {
+  border-color: #2a5a6a;
+  background: rgba(0, 229, 255, 0.05);
+  color: #00b0c8;
+}
+.ab-ui-btn.active {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.10);
+  color: #00e5ff;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.18);
+}
+
+/* ── Power toggle button ─────────────────────────────────────── */
+.ab-power-btn {
+  width: 36px;
+  height: 54px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #1a2a2a;
+  border-radius: 3px;
+  color: #2a5a5a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  flex-shrink: 0;
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+  box-sizing: border-box;
+}
+.ab-power-btn:hover {
+  border-color: #1a4a5a;
+  background: rgba(0, 229, 255, 0.06);
+  color: #00b0c8;
+}
+.ab-power-btn.active {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.13);
+  color: #00e5ff;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+}
 `;
 
 function injectStyles(): void {
@@ -141,10 +219,21 @@ function injectStyles(): void {
 // ── ActionBarUI ───────────────────────────────────────────────
 
 export class ActionBarUI {
-  private readonly el:      HTMLElement;
-  private readonly slots:   HTMLElement[] = [];
-  private readonly loadout: (string | null)[] = [...DEFAULT_LOADOUT];
-  private activeSlot: number | null = null;
+  private readonly el:        HTMLElement;
+  private readonly slots:     HTMLElement[] = [];
+  private readonly loadout:   (string | null)[] = [...DEFAULT_LOADOUT];
+  private activeSlot:  number | null = null;
+  private powerActive  = false;
+  private powerBtn!:   HTMLButtonElement;
+
+  // ── Optional panel refs for shortcut buttons ──────────────
+  private inventoryPanel: UIPanel | null = null;
+  private buildPanel:     UIPanel | null = null;
+  private invBtn!:        HTMLButtonElement;
+  private buildBtn!:      HTMLButtonElement;
+
+  setInventoryPanel(panel: UIPanel): void { this.inventoryPanel = panel; }
+  setBuildPanel(panel: UIPanel):     void { this.buildPanel     = panel; }
 
   constructor() {
     injectStyles();
@@ -154,7 +243,95 @@ export class ActionBarUI {
     document.body.appendChild(this.el);
 
     this.buildSlots();
+    this.buildPowerButton();
+    this.buildUIButtons();
     this.bindKeys();
+
+    // Keep button in sync with whoever emits the event (Alt key, etc.)
+    bus.on("power:overlay:toggle", ({ active }) => {
+      this.powerActive = active !== undefined ? active : !this.powerActive;
+      this.powerBtn.classList.toggle("active", this.powerActive);
+    });
+  }
+
+  // ── Power button ─────────────────────────────────────────
+
+  private buildPowerButton(): void {
+    this.powerBtn = document.createElement("button");
+    this.powerBtn.className = "ab-power-btn";
+    this.powerBtn.title = "Toggle power overlay [Alt]";
+    this.powerBtn.textContent = "⚡";
+    this.powerBtn.addEventListener("click", () => {
+      bus.emit("power:overlay:toggle", {});
+    });
+    this.el.appendChild(this.powerBtn);
+  }
+
+  // ── UI shortcut buttons ───────────────────────────────────
+
+  private buildUIButtons(): void {
+    const wrap = document.createElement("div");
+    wrap.className = "ab-ui-btns";
+
+    this.invBtn = document.createElement("button");
+    this.invBtn.className = "ab-ui-btn";
+    this.invBtn.title = "Inventory [E]";
+    this.invBtn.textContent = "⬡";
+    this.invBtn.addEventListener("click", () => this.inventoryPanel?.toggle());
+
+    this.buildBtn = document.createElement("button");
+    this.buildBtn.className = "ab-ui-btn";
+    this.buildBtn.title = "Fabrication menu [B]";
+    this.buildBtn.textContent = "◈";
+    this.buildBtn.addEventListener("click", () => this.buildPanel?.toggle());
+
+    wrap.appendChild(this.invBtn);
+    wrap.appendChild(this.buildBtn);
+    this.el.appendChild(wrap);
+  }
+
+  // ── Visual resolution ─────────────────────────────────────
+
+  /**
+   * Given a slot id (doodad ID, item ID, or DECONSTRUCT_SENTINEL),
+   * returns the display data to render.  Returns null for empty slots.
+   */
+  private resolveSlotVisual(
+    id: string,
+  ): { name: string; sprite: string; texture?: string; description: string } | null {
+    if (id === DECONSTRUCT_SENTINEL) return null; // handled separately
+
+    // Try as an inventory item first (e.g. "item_iron_extractor")
+    const itemDef: ItemDef | undefined = registry.findItem(id);
+    if (itemDef) {
+      if (itemDef.placesDoodadId) {
+        // Placeable item — mirror the doodad's visuals for consistency
+        const doodadDef: DoodadDef | undefined =
+          registry.findDoodad(itemDef.placesDoodadId);
+        if (doodadDef) {
+          return {
+            name:        doodadDef.name,
+            sprite:      doodadDef.sprite,
+            texture:     doodadDef.texture ?? doodadDef.animations?.idle?.[0],
+            description: doodadDef.description,
+          };
+        }
+      }
+      return { name: itemDef.name, sprite: itemDef.sprite, description: itemDef.description };
+    }
+
+    // Try as a direct doodad ID (legacy default-loadout entries)
+    const doodadDef: DoodadDef | undefined = registry.findDoodad(id);
+    if (doodadDef) {
+      return {
+        name:        doodadDef.name,
+        sprite:      doodadDef.sprite,
+        texture:     doodadDef.texture ?? doodadDef.animations?.idle?.[0],
+        description: doodadDef.description,
+      };
+    }
+
+    return null;
   }
 
   // ── Slot construction ─────────────────────────────────────
@@ -164,9 +341,9 @@ export class ActionBarUI {
     this.slots.length = 0;
 
     for (let i = 0; i < 10; i++) {
-      const itemId       = this.loadout[i] ?? null;
-      const keyLabel     = i === 9 ? "0" : String(i + 1);
-      const isDeconstruct = itemId === DECONSTRUCT_SENTINEL;
+      const slotId        = this.loadout[i] ?? null;
+      const keyLabel      = i === 9 ? "0" : String(i + 1);
+      const isDeconstruct = slotId === DECONSTRUCT_SENTINEL;
 
       const el = document.createElement("div");
       el.className = "ab-slot" + (isDeconstruct ? " ab-deconstruct" : "");
@@ -177,12 +354,12 @@ export class ActionBarUI {
       keyEl.textContent = keyLabel;
       el.appendChild(keyEl);
 
-      if (!itemId) {
+      if (!slotId) {
         const empty = document.createElement("div");
         empty.className = "ab-empty";
         empty.textContent = "—";
         el.appendChild(empty);
-        el.title = "Empty slot";
+        el.title = "Empty slot — drag an item or building here";
       } else if (isDeconstruct) {
         const sprite = document.createElement("div");
         sprite.className = "ab-sprite";
@@ -202,26 +379,59 @@ export class ActionBarUI {
         name.textContent = "Deconstruct";
         el.appendChild(name);
 
-        el.title = "[0] Deconstruct — hold LMB over a machine to remove it";
+        el.title = `[${keyLabel}] Deconstruct — hold LMB over a machine to remove it`;
       } else {
-        const def   = registry.findDoodad(itemId);
-        const color = def?.sprite.startsWith("#") ? def.sprite : "#3a4a5a";
+        const visual = this.resolveSlotVisual(slotId);
 
-        const sprite = document.createElement("div");
-        sprite.className = "ab-sprite";
-        sprite.style.background = color;
-        el.appendChild(sprite);
+        if (visual?.texture) {
+          const img = document.createElement("img");
+          img.className = "ab-sprite";
+          img.src = visual.texture;
+          img.style.cssText = "object-fit:contain;background:transparent;";
+          el.appendChild(img);
+        } else {
+          const sprite = document.createElement("div");
+          sprite.className = "ab-sprite";
+          sprite.style.background =
+            visual?.sprite.startsWith("#") ? visual.sprite : "#3a4a5a";
+          el.appendChild(sprite);
+        }
 
         const name = document.createElement("div");
         name.className = "ab-name";
-        name.textContent = def?.name ?? itemId;
+        name.textContent = visual?.name ?? slotId;
         el.appendChild(name);
 
-        el.title = def ? `[${keyLabel}] ${def.name} — ${def.description}` : itemId;
+        el.title = visual
+          ? `[${keyLabel}] ${visual.name} — ${visual.description}`
+          : slotId;
       }
 
+      // ── Click to select ──────────────────────────────────
       const slotIndex = i;
       el.addEventListener("click", () => this.selectSlot(slotIndex));
+
+      // ── Drop target — accept drags from Inventory / BuildUI ─
+      el.addEventListener("dragover", e => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = "link";
+        el.classList.add("drag-over");
+      });
+      el.addEventListener("dragleave", () => {
+        el.classList.remove("drag-over");
+      });
+      el.addEventListener("drop", e => {
+        e.preventDefault();
+        el.classList.remove("drag-over");
+        const id = e.dataTransfer!.getData("text/plain").trim();
+        if (!id) return;
+        this.loadout[slotIndex] = id;
+        // If this slot was active and we're changing its assignment, deselect
+        // so BuildSystem picks up the new id on next keypress.
+        if (this.activeSlot === slotIndex) this.deselect();
+        this.buildSlots();
+      });
+
       this.el.appendChild(el);
       this.slots.push(el);
     }
@@ -294,11 +504,15 @@ export class ActionBarUI {
       this.activeSlot = null;
     }
 
-    // Refresh visual active state
+    // Refresh visual active state on hotbar slots
     for (let i = 0; i < this.slots.length; i++) {
       const el = this.slots[i];
       if (!el) continue;
       el.classList.toggle("active", i === this.activeSlot);
     }
+
+    // Keep UI shortcut buttons in sync with their panel's open state
+    this.invBtn?.classList.toggle("active",   this.inventoryPanel?.isCurrentlyOpen() ?? false);
+    this.buildBtn?.classList.toggle("active", this.buildPanel?.isCurrentlyOpen()     ?? false);
   }
 }

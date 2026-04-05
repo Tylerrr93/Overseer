@@ -22,6 +22,13 @@ export type EventMap = {
   "ui:close-panels":   { except?: string };  // close all panels except named one
   // UI (engine → UI layer)
   "ui:notification":   { message: string; severity: "info" | "warn" | "error" };
+  /**
+   * Toggle (or explicitly set) the power grid overlay.
+   * Emitted by: Alt key handler, ActionBar ⚡ button.
+   * Consumed by: Renderer (canvas overlay), PowerUI (stats panel).
+   * Pass `active` to force a specific state; omit for a pure flip.
+   */
+  "power:overlay:toggle": { active?: boolean };
 };
 
 type EventKey = keyof EventMap;

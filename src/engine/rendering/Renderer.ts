@@ -31,6 +31,7 @@
 import * as PIXI from "pixi.js";
 import { sm }          from "@engine/core/StateManager";
 import { registry }    from "@engine/core/Registry";
+import { bus }         from "@engine/core/EventBus";
 import { GameConfig }  from "@engine/core/GameConfig";
 import { DIR_DELTA, rotateDir, rotationToDir } from "@engine/utils/portUtils";
 import type { CardinalDir, DoodadDef, DoodadPort } from "@t/content";
@@ -192,9 +193,10 @@ export class Renderer {
     this.app.stage.addChild(this.hudLayer);
     this.buildHUD();
 
-    // Alt key shows power overlay
-    window.addEventListener("keydown", e => { if (e.key === "Alt") { e.preventDefault(); this.showPowerGrid = true; } });
-    window.addEventListener("keyup",   e => { if (e.key === "Alt") this.showPowerGrid = false; });
+    // Power overlay is toggled via the event bus (Alt key / ⚡ button both emit it).
+    bus.on("power:overlay:toggle", ({ active }) => {
+      this.showPowerGrid = active !== undefined ? active : !this.showPowerGrid;
+    });
 
     // Mouse wheel to zoom
     this.canvas.addEventListener("wheel", (e) => {

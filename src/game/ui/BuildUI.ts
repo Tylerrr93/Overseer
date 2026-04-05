@@ -227,49 +227,114 @@ export class BuildUI extends UIPanel {
     this.grid.innerHTML = "";
     const currentHeld = sm.state.player.heldItemId;
 
-    for (const [, def] of registry.allDoodads()) {
-      const card = document.createElement("div");
-      card.className = "build-card" + (def.id === currentHeld ? " selected" : "");
+    // Determine the effective doodad ID for the current held item
+    // (it may be an item ID with placesDoodadId, or a direct doodad ID).
+    const heldItemDef  = currentHeld ? registry.findItem(currentHeld) : undefined;
+    const heldDoodadId = heldItemDef?.placesDoodadId ?? currentHeld ?? null;
 
-      const color = def.sprite.startsWith("#") ? def.sprite : "#556";
-      const fp    = def.footprint;
+    for (const [, def] of registry.allDoodads()) {
+      const card  = document.createElement("div");
+      const isSelected = def.id === heldDoodadId;
+      card.className = "build-card" + (isSelected ? " selected" : "");
+
+      // Prefer texture / animation frame over flat colour
+      const color   = def.sprite.startsWith("#") ? def.sprite : "#556";
+      const texture = def.texture ?? def.animations?.idle?.[0];
+      const fp      = def.footprint;
+
+      const spriteHtml = texture
+        ? `<img class="bc-sprite" src="${texture}"
+               style="object-fit:contain;background:transparent;" />`
+        : `<div class="bc-sprite" style="background:${color}"></div>`;
 
       card.innerHTML = `
-        <div class="bc-sprite" style="background:${color}"></div>
+        ${spriteHtml}
         <div class="bc-name">${def.name}</div>
         <div class="bc-size">${fp.w}×${fp.h} · ${def.powerDraw}W</div>
       `;
       card.title = def.description;
 
+      // Click: select this doodad for placement (legacy doodad-ID path)
       card.addEventListener("click", () => {
         sm.state.player.heldItemId        = def.id;
         sm.state.player.placementRotation = 0;
-        sm.state.player.cursorMode        = CursorMode.Build;  // ← add this
-        this.close();        // also triggers onClose → updateHud
+        sm.state.player.cursorMode        = CursorMode.Build;
+        this.close();
         this.updateHud();
+      });
+
+      // Drag: let the user assign it to an ActionBar slot
+      card.draggable = true;
+      card.addEventListener("dragstart", e => {
+        e.dataTransfer!.setData("text/plain", def.id);
+        e.dataTransfer!.effectAllowed = "link";
       });
 
       this.grid.appendChild(card);
     }
+
+    // ── Deconstruct card ──────────────────────────────────────
+    const deconCard = document.createElement("div");
+    const deconSelected =
+      sm.state.player.cursorMode === CursorMode.Deconstruct;
+    deconCard.className = "build-card" + (deconSelected ? " selected" : "");
+    deconCard.innerHTML = `
+      <div class="bc-sprite" style="
+        background:#3a1a0a;
+        border:1px dashed #7a3a1a;
+        display:flex;align-items:center;justify-content:center;
+        font-size:20px;">⛏</div>
+      <div class="bc-name">Deconstruct</div>
+      <div class="bc-size">Hold LMB</div>
+    `;
+    deconCard.title = "Hold LMB over any machine to remove it";
+
+    deconCard.addEventListener("click", () => {
+      sm.state.player.cursorMode = CursorMode.Deconstruct;
+      sm.state.player.heldItemId = null;
+      this.close();
+      this.updateHud();
+    });
+
+    deconCard.draggable = true;
+    deconCard.addEventListener("dragstart", e => {
+      e.dataTransfer!.setData("text/plain", "deconstruct");
+      e.dataTransfer!.effectAllowed = "link";
+    });
+
+    this.grid.appendChild(deconCard);
   }
 
   private updateHud(): void {
-    const { heldItemId, placementRotation } = sm.state.player;
+    const { heldItemId, placementRotation, cursorMode } = sm.state.player;
+
+    if (cursorMode === CursorMode.Deconstruct) {
+      this.modeHud.textContent =
+        `⛏ DECONSTRUCT MODE  ·  HOLD LMB OVER MACHINE  ·  [ESC/RMB] CANCEL`;
+      this.modeHud.classList.add("visible");
+      return;
+    }
 
     if (!heldItemId) {
       this.modeHud.classList.remove("visible");
       return;
     }
 
-    const def = registry.findDoodad(heldItemId);
-    if (!def) {
+    // Resolve doodad name from either a direct doodad ID
+    // or an inventory item whose placesDoodadId points at a doodad.
+    const itemDef   = registry.findItem(heldItemId);
+    const doodadDef = itemDef?.placesDoodadId
+      ? registry.findDoodad(itemDef.placesDoodadId)
+      : registry.findDoodad(heldItemId);
+
+    if (!doodadDef) {
       this.modeHud.classList.remove("visible");
       return;
     }
 
     const rotLabel = (["0°", "90°", "180°", "270°"] as const)[placementRotation] ?? "0°";
     this.modeHud.textContent =
-      `◈ BUILD MODE  ·  ${def.name.toUpperCase()}  ·  ROT ${rotLabel}  ·  [R] ROTATE  [ESC/RMB] CANCEL`;
+      `◈ BUILD MODE  ·  ${doodadDef.name.toUpperCase()}  ·  ROT ${rotLabel}  ·  [R] ROTATE  [ESC/RMB] CANCEL`;
     this.modeHud.classList.add("visible");
   }
 }

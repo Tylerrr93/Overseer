@@ -51,6 +51,11 @@ const STYLES = `
 }
 
 .inv-slot:hover       { border-color: var(--col-slot-hover-border); }
+.inv-slot.dragging    {
+  opacity: 0.45;
+  border-color: #00e5ff;
+  cursor: grabbing;
+}
 .inv-slot.filled      {
   border-color: #1e4a5a;
   background: var(--col-slot-filled-bg);
@@ -269,6 +274,23 @@ export class InventoryUI extends UIPanel {
           <div class="item-qty">${stack.qty}</div>
         `;
         el.title = `${name} ×${stack.qty}`;
+
+        // ── Drag source ──────────────────────────────────────
+        //  All filled slots are draggable.  Dropping on an
+        //  ActionBar slot assigns that item (placeable items
+        //  will enter item-based placement; others are no-ops).
+        el.draggable = true;
+        el.style.cursor = "grab";
+        el.addEventListener("dragstart", e => {
+          e.dataTransfer!.setData("text/plain", stack.itemId);
+          e.dataTransfer!.effectAllowed = "link";
+          // Small delay so the browser ghost image captures the
+          // slot before we could mutate it.
+          requestAnimationFrame(() => el.classList.add("dragging"));
+        });
+        el.addEventListener("dragend", () => {
+          el.classList.remove("dragging");
+        });
       } else {
         el.innerHTML = `<div class="empty-label">${i + 1}</div>`;
       }

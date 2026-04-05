@@ -46,18 +46,27 @@ function cursorToOrigin(
   };
 }
 
-// ── Refund calculation ────────────────────────────────────────
+// ── Cost helpers ──────────────────────────────────────────────
 
 /**
- * Compute the partial refund for a given buildCost and fraction.
+ * Resolve the raw-resource build cost for a doodad.
+ * Prefers `def.cost` (new canonical field) and falls back to
+ * `def.buildCost` (legacy) so old doodad defs keep working.
+ */
+function rawCost(def: DoodadDef): { itemId: string; qty: number }[] {
+  return def.cost ?? def.buildCost ?? [];
+}
+
+/**
+ * Compute the partial refund for a raw cost array and fraction.
  * Each qty is floored — intentional: a cost of 1 at 50% refunds 0.
  * Design costs ≥ 2 for items you want a guaranteed partial refund.
  */
 function calcRefund(
-  buildCost:       { itemId: string; qty: number }[],
+  cost:            { itemId: string; qty: number }[],
   refundFraction:  number,
 ): { itemId: string; qty: number }[] {
-  return buildCost
+  return cost
     .map(c => ({ itemId: c.itemId, qty: Math.floor(c.qty * refundFraction) }))
     .filter(c => c.qty > 0);
 }
@@ -127,14 +136,20 @@ export class BuildSystem {
 
     // -- Ghost validity + affordability check (Build mode) ----
     if (cursorMode === CursorMode.Build && heldItemId) {
-      const def = registry.findDoodad(heldItemId);
+      // Resolve: item ID → placesDoodadId → DoodadDef, or direct doodad ID.
+      const heldItemDef = registry.findItem(heldItemId);
+      const doodadId    = heldItemDef?.placesDoodadId ?? heldItemId;
+      const def         = registry.findDoodad(doodadId);
       if (def) {
         const fp     = rotatedFootprint(def, placementRotation);
         const origin = cursorToOrigin(
           cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h,
         );
         this.lastPlacementValid = this.validate(origin, fp.w, fp.h);
-        this.lastAffordable     = sm.canAffordCost(def.buildCost ?? []);
+        // Affordable = has prefab item OR has raw resources
+        this.lastAffordable     = heldItemDef?.placesDoodadId
+          ? sm.canAffordCost([{ itemId: heldItemId, qty: 1 }])
+          : sm.canAffordCost(rawCost(def));
       } else {
         this.lastPlacementValid = false;
         this.lastAffordable     = true;
@@ -217,20 +232,26 @@ export class BuildSystem {
     const doodad = this.getDoodadUnderCursor();
 
     if (doodad?.construction?.mode === "building") {
-      // Cancel placement — refund the full cost (it was just placed)
+      // Cancel placement — full refund of whatever was consumed.
       const def = registry.getDoodad(doodad.defId);
       const fp  = rotatedFootprint(def, doodad.rotation);
       this.clearTiles(doodad.origin, fp.w, fp.h);
       sm.removeBelt(doodad.id);
       sm.removeDoodad(doodad.id);
 
-      // Full refund since build was cancelled before completion
-      for (const cost of def.buildCost ?? []) {
-        if (cost.qty > 0) sm.givePlayerItem(cost.itemId, cost.qty);
+      // Mirror completeDeconstruct: prefer the placeable item refund,
+      // otherwise refund full raw resources (no partial fraction on cancel).
+      const placeableItem = registry.findItemForDoodad(def.id);
+      if (placeableItem) {
+        sm.givePlayerItem(placeableItem.id, 1);
+      } else {
+        for (const c of rawCost(def)) {
+          if (c.qty > 0) sm.givePlayerItem(c.itemId, c.qty);
+        }
       }
 
       bus.emit("ui:notification", {
-        message:  `${def.name} placement cancelled — cost refunded.`,
+        message:  `${def.name} placement cancelled — refunded.`,
         severity: "info",
       });
       return;
@@ -250,7 +271,11 @@ export class BuildSystem {
     const { heldItemId, placementRotation, cursorWorldPos } = sm.state.player;
     if (!heldItemId) return;
 
-    const def = registry.findDoodad(heldItemId);
+    // Resolve: heldItemId can be an inventory item that places a doodad,
+    // or a legacy doodad ID used directly from the default action-bar loadout.
+    const heldItemDef = registry.findItem(heldItemId);
+    const doodadId    = heldItemDef?.placesDoodadId ?? heldItemId;
+    const def         = registry.findDoodad(doodadId);
     if (!def) return;
 
     const fp     = rotatedFootprint(def, placementRotation);
@@ -267,29 +292,56 @@ export class BuildSystem {
       return;
     }
 
-    // Affordability check
-    const cost = def.buildCost ?? [];
-    if (!sm.canAffordCost(cost)) {
-      const missing = this.missingCostString(cost);
-      bus.emit("ui:notification", {
-        message:  `Not enough resources — need ${missing}.`,
-        severity: "warn",
-      });
-      return;
+    // ── Two build paths ────────────────────────────────────────
+    //  Prefab   → player has the matching placeable item.
+    //            Consume 1 item; build time is halved (quick re-install).
+    //  Raw      → player has the raw resource cost but no prefab.
+    //            Consume raw resources; full build time applies.
+    //  Neither  → cannot build.
+    const usingPrefab = Boolean(heldItemDef?.placesDoodadId);
+
+    if (usingPrefab) {
+      if (!sm.canAffordCost([{ itemId: heldItemId, qty: 1 }])) {
+        // Check if they have raw resources as a fallback message hint
+        const hasRaw = sm.canAffordCost(rawCost(def));
+        bus.emit("ui:notification", {
+          message:  hasRaw
+            ? `No prefab ${heldItemDef!.name} — use raw resources from the action bar instead.`
+            : `No ${heldItemDef!.name} in inventory.`,
+          severity: "warn",
+        });
+        return;
+      }
+      sm.tryConsumePlayerItems([{ itemId: heldItemId, qty: 1 }]);
+    } else {
+      const cost = rawCost(def);
+      if (!sm.canAffordCost(cost)) {
+        const missing = this.missingCostString(cost);
+        const hasItem = registry.findItemForDoodad(doodadId);
+        bus.emit("ui:notification", {
+          message:  cost.length === 0
+            ? "Cannot place here."
+            : hasItem
+              ? `Need raw resources (${missing}) or a prefab ${hasItem.name}.`
+              : `Not enough resources — need ${missing}.`,
+          severity: "warn",
+        });
+        return;
+      }
+      sm.tryConsumePlayerItems(cost);
     }
 
-    // Deduct cost from inventory
-    sm.tryConsumePlayerItems(cost);
-
-    const id          = uuidv4();
-    const buildTimeMs = def.buildTimeMs ?? 500;
-    const isBelt      = heldItemId === "belt_straight";
+    const id = uuidv4();
+    // Prefab path gets a 50% build time bonus — the machine is pre-assembled.
+    const baseBuildTime = def.buildTimeMs ?? 500;
+    const buildTimeMs   = usingPrefab ? Math.max(0, Math.floor(baseBuildTime * 0.5)) : baseBuildTime;
+    const isBelt        = doodadId === "belt_straight";
     const isInstant   = isBelt || buildTimeMs <= 0;
 
     if (isBelt) {
       // Belts are always instant — no build phase
       sm.addDoodad({
-        id, defId: heldItemId, origin,
+        id, defId: doodadId, origin,
         rotation:          placementRotation,
         inventory:         [],
         crafting:          null,
@@ -306,7 +358,7 @@ export class BuildSystem {
     } else if (isInstant) {
       // buildTimeMs === 0 — place fully built immediately
       sm.addDoodad({
-        id, defId: heldItemId, origin,
+        id, defId: doodadId, origin,
         rotation:          placementRotation,
         inventory:         def.slots.map(() => null),
         crafting:          null,
@@ -318,7 +370,7 @@ export class BuildSystem {
     } else {
       // Place as a blueprint that must be held-to-build
       sm.addDoodad({
-        id, defId: heldItemId, origin,
+        id, defId: doodadId, origin,
         rotation:          placementRotation,
         inventory:         def.slots.map(() => null),
         crafting:          null,
@@ -345,17 +397,25 @@ export class BuildSystem {
   // ── Deconstruct completion ────────────────────────────────
 
   private completeDeconstruct(doodad: DoodadState, def: DoodadDef): void {
-    const refundFraction = def.refundFraction ?? 0.5;
-    const refunds        = calcRefund(def.buildCost ?? [], refundFraction);
-
-    // Refund slot contents in full
+    // Refund slot contents in full regardless of deconstruct method.
     for (const stack of doodad.inventory) {
       if (stack && stack.qty > 0) sm.givePlayerItem(stack.itemId, stack.qty);
     }
 
-    // Partial cost refund
-    for (const r of refunds) {
-      sm.givePlayerItem(r.itemId, r.qty);
+    // If a placeable item is registered for this doodad, return that item.
+    // Otherwise fall back to the legacy partial buildCost refund.
+    const placeableItem = registry.findItemForDoodad(def.id);
+    let notifySuffix: string;
+
+    if (placeableItem) {
+      sm.givePlayerItem(placeableItem.id, 1);
+      notifySuffix = `→ ${placeableItem.name} recovered.`;
+    } else {
+      const refundFraction = def.refundFraction ?? 0.5;
+      const refunds        = calcRefund(rawCost(def), refundFraction);
+      for (const r of refunds) sm.givePlayerItem(r.itemId, r.qty);
+      const refundPct = Math.round(refundFraction * 100);
+      notifySuffix = `(${refundPct}% cost returned).`;
     }
 
     const fp = rotatedFootprint(def, doodad.rotation);
@@ -363,9 +423,8 @@ export class BuildSystem {
     sm.removeBelt(doodad.id);
     sm.removeDoodad(doodad.id);
 
-    const refundPct = Math.round(refundFraction * 100);
     bus.emit("ui:notification", {
-      message:  `${def.name} deconstructed (${refundPct}% cost returned).`,
+      message:  `${def.name} deconstructed ${notifySuffix}`,
       severity: "info",
     });
   }
@@ -431,6 +490,7 @@ export class BuildSystem {
   private missingCostString(
     cost: { itemId: string; qty: number }[],
   ): string {
+    if (cost.length === 0) return "nothing (free)";
     return cost
       .filter(c => {
         let have = 0;

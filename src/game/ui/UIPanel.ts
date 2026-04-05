@@ -200,6 +200,9 @@ export abstract class UIPanel {
     else             this.open();
   }
 
+  /** Returns true while the panel is visible. Safe to call from outside. */
+  isCurrentlyOpen(): boolean { return this.isOpen; }
+
   // ── Subclass hooks ─────────────────────────────────────────────
 
   /** Fired immediately after the panel becomes visible. */

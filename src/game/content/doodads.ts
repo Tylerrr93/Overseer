@@ -35,19 +35,24 @@ export const DOODADS: DoodadDef[] = [
     sprite:      "#6a2a0a",
     footprint:   { w: 2, h: 2 },
     slots: [
-      { role: "input",  filter: ["ore"], capacity: 100 },  // ore slot
-      { role: "input",  filter: ["fuel"], capacity: 100 }, // fuel slot
+      { role: "input",  filter: ["ore"], capacity: 100 },
+      { role: "input",  filter: ["fuel"], capacity: 100 },
       { role: "output", capacity: 100 },
     ],
     ports: [
-      { dx: 0, dy: 0, dir: "W", role: "input" },   // ore in from left
-      { dx: 0, dy: 1, dir: "W", role: "input" },   // fuel in from left
-      { dx: 1, dy: 0, dir: "E", role: "output" },  // product out right
+      { dx: 0, dy: 0, dir: "W", role: "input" },
+      { dx: 0, dy: 1, dir: "W", role: "input" },
+      { dx: 1, dy: 0, dir: "E", role: "output" },
     ],
-    machineTag:        "smelter",
-    interactable:      true,
-    powerDraw:         20,   // draws from grid; falls back to coal in fuel slot
-    tickIntervalMs:    500,
+    machineTag:     "smelter",
+    interactable:   true,
+    powerDraw:      20,
+    tickIntervalMs: 500,
+    buildTimeMs:    3000,
+    cost: [
+      { itemId: "scrap_metal", qty: 8 },
+      { itemId: "coal",        qty: 2 },
+    ],
   },
 
   // ── Fabricator (3×3) ─────────────────────────────────────
@@ -71,9 +76,15 @@ export const DOODADS: DoodadDef[] = [
       { dx: 0, dy: 2, dir: "S", role: "output" },
       { dx: 2, dy: 2, dir: "S", role: "output" },
     ],
-    machineTag:    "fabricator",
-    interactable:  true,
-    powerDraw:     50,
+    machineTag:   "fabricator",
+    interactable: true,
+    powerDraw:    50,
+    buildTimeMs:  6000,
+    cost: [
+      { itemId: "scrap_metal", qty: 12 },
+      { itemId: "iron_ore",    qty:  4 },
+      { itemId: "copper_ore",  qty:  2 },
+    ],
   },
 
   // ── Carbon Press ──────────────────────────────────────────
@@ -92,16 +103,22 @@ export const DOODADS: DoodadDef[] = [
       { dx: 0, dy: 0, dir: "W", role: "input"  },
       { dx: 1, dy: 0, dir: "E", role: "output" },
     ],
-    machineTag:   "carbon_press",
-    interactable: true,
-    powerDraw:    20,
+    machineTag:        "carbon_press",
+    interactable:      true,
+    powerDraw:         20,
+    buildTimeMs:       3000,
+    deconstructTimeMs: 1500,
+    refundFraction:    0.5,
+    // Raw scratch cost (replaces legacy buildCost for new build paths)
+    cost: [
+      { itemId: "scrap_metal", qty: 6 },
+      { itemId: "coal",        qty: 2 },
+    ],
+    // Legacy — kept so old saves that used buildCost still refund correctly
     buildCost: [
       { itemId: "iron_plate", qty: 4 },
       { itemId: "gear",       qty: 1 },
     ],
-    buildTimeMs:       1500,
-    deconstructTimeMs: 1500,
-    refundFraction:    0.5,
   },
 
   // ── Iron Extractor (1×1) ─────────────────────────────────
@@ -112,7 +129,7 @@ export const DOODADS: DoodadDef[] = [
     sprite:      "#5a4a3a",
     footprint:   { w: 1, h: 1 },
     slots: [
-      { role: "fuel",   filter: ["fuel"], capacity: 50 },   // coal goes here
+      { role: "fuel",   filter: ["fuel"], capacity: 50 },
       { role: "output", capacity: 100 },
     ],
     ports: [
@@ -122,19 +139,24 @@ export const DOODADS: DoodadDef[] = [
     interactable:  true,
     powerDraw:     0,
     tickIntervalMs: 2000,
-    texture: "assets/extractor_1.png",
+    texture:       "assets/extractor_1.png",
+    buildTimeMs:   3000,
+    cost: [
+      { itemId: "scrap_metal", qty: 4 },
+      { itemId: "coal",        qty: 1 },
+    ],
   },
 
   // ── Coal Extractor (1×1) ─────────────────────────────────
   {
     id:          "coal_extractor",
     name:        "Coal Extractor",
-    showLabel: false,
+    showLabel:   false,
     description: "Drills coal ore. Requires coal as fuel — load it manually via F. Place on a grey coal ore tile.",
     sprite:      "#7e7e7e",
     footprint:   { w: 1, h: 1 },
     slots: [
-      { role: "fuel",   filter: ["fuel"], capacity: 50 },   // coal goes here
+      { role: "fuel",   filter: ["fuel"], capacity: 50 },
       { role: "output", capacity: 100 },
     ],
     ports: [
@@ -149,6 +171,10 @@ export const DOODADS: DoodadDef[] = [
       active: ["assets/coal_extractor_1.png", "assets/coal_extractor_2.png"],
     },
     buildTimeMs: 10000,
+    cost: [
+      { itemId: "scrap_metal", qty: 5 },
+      { itemId: "iron_ore",    qty: 2 },
+    ],
   },
 
   // ── Transport Belt (1×1) ─────────────────────────────────
@@ -158,10 +184,13 @@ export const DOODADS: DoodadDef[] = [
     description: "Moves items in one direction. Chain them to build logistics lines.",
     sprite:      "#4a3a1a",
     footprint:   { w: 1, h: 1 },
-    slots: [],  // belts are handled by BeltSystem, not slot inventory
+    slots: [],
     ports: [],
-    powerDraw:  0,
-    // No machineTag — BeltSystem handles it separately.
+    powerDraw:   0,
+    // Intentionally cheap — belts are placed in large runs.
+    cost: [
+      { itemId: "scrap_metal", qty: 1 },
+    ],
   },
 
   // ── Power Node (1×1) ────────────────────────────────────
@@ -174,9 +203,14 @@ export const DOODADS: DoodadDef[] = [
     slots:        [],
     ports:        [],
     powerDraw:    0,
-    powerRadius:  4,    // tiles — machines within this range get powered
-    connectRadius: 6,   // tiles — nodes within this range join the same network
+    powerRadius:  4,
+    connectRadius: 6,
     interactable: false,
+    buildTimeMs:  1000,
+    cost: [
+      { itemId: "scrap_metal", qty: 2 },
+      { itemId: "copper_ore",  qty: 1 },
+    ],
   },
 
   // ── Coal Generator (2×2) ─────────────────────────────────
@@ -195,8 +229,13 @@ export const DOODADS: DoodadDef[] = [
     machineTag:       "generator",
     interactable:     true,
     powerDraw:        0,
-    powerGeneration:  500,  // watts when actively burning
+    powerGeneration:  500,
     tickIntervalMs:   500,
+    buildTimeMs:      4000,
+    cost: [
+      { itemId: "scrap_metal", qty: 10 },
+      { itemId: "coal",        qty:  4 },
+    ],
   },
 
   // ── Storage Chest (2×2) ──────────────────────────────────
@@ -238,5 +277,9 @@ export const DOODADS: DoodadDef[] = [
     machineTag:   "storage",
     interactable: true,
     powerDraw:    0,
+    buildTimeMs:  2000,
+    cost: [
+      { itemId: "scrap_metal", qty: 6 },
+    ],
   },
 ];

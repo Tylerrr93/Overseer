@@ -9,9 +9,11 @@
 import type { ItemDef, RecipeDef, DoodadDef } from "@t/content";
 
 export class Registry {
-  private readonly items    = new Map<string, ItemDef>();
-  private readonly recipes  = new Map<string, RecipeDef>();
-  private readonly doodads  = new Map<string, DoodadDef>();
+  private readonly items        = new Map<string, ItemDef>();
+  private readonly recipes      = new Map<string, RecipeDef>();
+  private readonly doodads      = new Map<string, DoodadDef>();
+  /** Reverse index: doodadId → the ItemDef whose placesDoodadId matches it. */
+  private readonly itemByDoodad = new Map<string, ItemDef>();
 
   // -- Registration (called once at boot) ---------------------
 
@@ -20,6 +22,9 @@ export class Registry {
       throw new Error(`[Registry] Duplicate item id: "${def.id}"`);
     }
     this.items.set(def.id, Object.freeze(def));
+    if (def.placesDoodadId) {
+      this.itemByDoodad.set(def.placesDoodadId, def);
+    }
   }
 
   registerRecipe(def: RecipeDef): void {
@@ -67,6 +72,14 @@ export class Registry {
   findItem(id: string): ItemDef | undefined   { return this.items.get(id); }
   findRecipe(id: string): RecipeDef | undefined { return this.recipes.get(id); }
   findDoodad(id: string): DoodadDef | undefined { return this.doodads.get(id); }
+
+  /**
+   * Returns the ItemDef whose `placesDoodadId` matches `doodadId`, or
+   * undefined if no such item has been registered.
+   */
+  findItemForDoodad(doodadId: string): ItemDef | undefined {
+    return this.itemByDoodad.get(doodadId);
+  }
 
   // -- Query helpers ------------------------------------------
 

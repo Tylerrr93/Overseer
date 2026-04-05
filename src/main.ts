@@ -68,6 +68,8 @@ async function main() {
   const powerUI     = new PowerUI();
   const actionBarUI = new ActionBarUI();
   powerUI.setPowerSystem(powerSystem);
+  actionBarUI.setInventoryPanel(inventoryUI);
+  actionBarUI.setBuildPanel(buildUI);
   playerSystem.setFeedbackUI(inventoryUI);
 
   // ── 5. State ───────────────────────────────────────────────
@@ -101,7 +103,7 @@ async function main() {
   };
 
   console.info("🌍 Digitized Overseer — PixiJS v8 renderer booted.");
-  console.info("   Hold Alt to show power grid overlay.");
+  console.info("   Press Alt (or click ⚡) to toggle the power grid overlay.");
 }
 
 main().catch(err => {

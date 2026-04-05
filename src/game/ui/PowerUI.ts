@@ -1,39 +1,34 @@
 // ============================================================
 //  src/game/ui/PowerUI.ts
 //
-//  Shown while Alt is held. Displays per-network power stats
-//  similar to Factorio's electric network info panel.
+//  Shown while Alt is held (or toggled via ⚡ button).
+//  Displays per-network power stats similar to Factorio's
+//  electric network info panel.
+//
+//  Extends UIPanel so it gets drag-to-move, resize handle,
+//  and z-index stacking with the other panels.
 //
 //  Updated every frame directly from PowerSystem data.
-//  No EventBus involvement — it reads live data each render.
+//  No EventBus involvement for rendering — reads live data.
 // ============================================================
 
+import { UIPanel }   from "./UIPanel";
 import { registry }  from "@engine/core/Registry";
 import { sm }        from "@engine/core/StateManager";
+import { bus }       from "@engine/core/EventBus";
 import type { IPowerSystem } from "@engine/rendering/Renderer";
 
 // ── Styles ────────────────────────────────────────────────────
 
 const STYLES = `
 #power-ui {
-  display: none;
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 98;
-  background: rgba(6, 10, 18, 0.94);
-  border: 1px solid #1a2a4a;
-  border-radius: 4px;
-  padding: 12px 14px;
   min-width: 260px;
-  max-width: 300px;
+  max-width: 320px;
   font-family: monospace;
   color: #a0b8d8;
   box-shadow: 0 0 32px rgba(0, 160, 255, 0.06);
-  pointer-events: none;
   user-select: none;
 }
-#power-ui.visible { display: block; }
 
 #power-ui-title {
   font-size: 10px;
@@ -46,7 +41,10 @@ const STYLES = `
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  cursor: grab;
+  user-select: none;
 }
+#power-ui-title:active { cursor: grabbing; }
 #power-ui-title span {
   font-size: 8px;
   color: #2a4a6a;
@@ -141,39 +139,59 @@ function injectStyles(): void {
 
 // ─────────────────────────────────────────────────────────────
 
-export class PowerUI {
-  private readonly panel:       HTMLElement;
+export class PowerUI extends UIPanel {
   private readonly body:        HTMLElement;
   private readonly unconnected: HTMLElement;
   private readonly nogrid:      HTMLElement;
-  private isVisible = false;
   private powerSystem: IPowerSystem | null = null;
 
   constructor() {
+    super({
+      id:        "power-ui",
+      name:      "power",
+      minWidth:  260,
+      minHeight: 80,
+      resizable: true,
+    });
+
     injectStyles();
 
-    this.panel = document.createElement("div");
-    this.panel.id = "power-ui";
-    this.panel.innerHTML = `
+    // Apply theme colours that UIPanel doesn't set
+    this.el.style.background  = "rgba(6, 10, 18, 0.94)";
+    this.el.style.border      = "1px solid #1a2a4a";
+    this.el.style.borderRadius = "4px";
+    this.el.style.padding     = "12px 14px";
+
+    this.el.innerHTML = `
       <div id="power-ui-title">
         ⚡ Power Networks
-        <span>ALT — TOGGLE</span>
+        <span>ALT / ⚡ — TOGGLE</span>
       </div>
       <div id="power-ui-body"></div>
       <div id="power-unconnected"></div>
       <div id="power-nogrid">No power nodes placed.</div>
     `;
-    document.body.appendChild(this.panel);
 
-    this.body        = this.panel.querySelector("#power-ui-body")!;
-    this.unconnected = this.panel.querySelector("#power-unconnected")!;
-    this.nogrid      = this.panel.querySelector("#power-nogrid")!;
+    this.body        = this.el.querySelector("#power-ui-body")!;
+    this.unconnected = this.el.querySelector("#power-unconnected")!;
+    this.nogrid      = this.el.querySelector("#power-nogrid")!;
 
+    // Wire the title bar as the drag handle
+    this.bindDragHandle(this.el.querySelector("#power-ui-title") as HTMLElement);
+
+    // Alt key → toggle
     window.addEventListener("keydown", e => {
-      if (e.key === "Alt") { e.preventDefault(); this.show(); }
+      if (e.key === "Alt") {
+        e.preventDefault();
+        bus.emit("power:overlay:toggle", {});
+      }
     });
-    window.addEventListener("keyup", e => {
-      if (e.key === "Alt") this.hide();
+
+    // Subscribe so this panel stays in sync with any emitter
+    // (Alt key, ActionBar ⚡ button, etc.).
+    bus.on("power:overlay:toggle", ({ active }) => {
+      const next = active !== undefined ? active : !this.isOpen;
+      if (next) this.open(); else this.close();
     });
   }
 
@@ -181,23 +199,16 @@ export class PowerUI {
     this.powerSystem = ps;
   }
 
-  // ── Show / hide ───────────────────────────────────────────
+  // ── UIPanel lifecycle hooks ───────────────────────────────
 
-  private show(): void {
-    this.isVisible = true;
-    this.panel.classList.add("visible");
+  protected override onOpen(): void {
     this.render();
-  }
-
-  private hide(): void {
-    this.isVisible = false;
-    this.panel.classList.remove("visible");
   }
 
   // ── Tick called by GameLoop ───────────────────────────────
 
   tick(): void {
-    if (!this.isVisible) return;
+    if (!this.isOpen) return;
     this.render();
   }
 
