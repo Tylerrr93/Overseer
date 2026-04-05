@@ -143,7 +143,7 @@ const STYLES = `
 
 #chest-hint {
   position: fixed;
-  bottom: 85px; left: 50%;
+  bottom: 92px; left: 50%;
   transform: translateX(-50%);
   background: rgba(16,12,4,0.88);
   border: 1px solid #4a3a1a;

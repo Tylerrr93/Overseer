@@ -52,6 +52,9 @@ export interface ConstructionProgress {
   mode:       "building" | "deconstructing";
   progressMs: number;
   totalMs:    number;
+  /** True when the blueprint was placed by consuming a prefab item
+   *  rather than raw resources.  Determines the cancel refund. */
+  usedPrefab?: boolean;
 }
 
 export interface DoodadState {

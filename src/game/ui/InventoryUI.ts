@@ -67,6 +67,7 @@ const STYLES = `
   border-radius: 2px;
   margin-bottom: 2px;
   flex-shrink: 0;
+  pointer-events: none;
 }
 
 .inv-slot .item-qty {
@@ -265,11 +266,23 @@ export class InventoryUI extends UIPanel {
       el.className = "inv-slot" + (stack ? " filled" : "");
 
       if (stack) {
-        const def   = registry.findItem(stack.itemId);
-        const color = def?.sprite.startsWith("#") ? def.sprite : "#556";
-        const name  = def?.name ?? stack.itemId;
+        const def  = registry.findItem(stack.itemId);
+        const name = def?.name ?? stack.itemId;
+
+        // Prefer the doodad's texture for placeable items so the
+        // inventory shows the same graphic as the action bar does.
+        const doodadDef  = def?.placesDoodadId
+          ? registry.findDoodad(def.placesDoodadId)
+          : undefined;
+        const texture    = doodadDef?.texture ?? doodadDef?.animations?.idle?.[0];
+        const color      = def?.sprite.startsWith("#") ? def.sprite : "#556";
+        const spriteHtml = texture
+          ? `<img class="sprite" src="${texture}" draggable="false"
+                  style="object-fit:contain;background:transparent;" />`
+          : `<div class="sprite" style="background:${color}"></div>`;
+
         el.innerHTML = `
-          <div class="sprite"    style="background:${color}"></div>
+          ${spriteHtml}
           <div class="item-name">${name}</div>
           <div class="item-qty">${stack.qty}</div>
         `;

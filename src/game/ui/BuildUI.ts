@@ -68,6 +68,7 @@ const STYLES = `
   height: 36px;
   border-radius: 3px;
   flex-shrink: 0;
+  pointer-events: none;
 }
 
 .build-card .bc-name {
@@ -84,9 +85,11 @@ const STYLES = `
 
 /* ── Build-mode HUD strip ────────────────────────────────────── */
 /*  Lives outside the draggable panel (screen-fixed, z-index 98)  */
+/*  Sits at the top so it never collides with the chest / doodad  */
+/*  interaction hints at the bottom.                              */
 #build-mode-hud {
   position: fixed;
-  bottom: 16px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(16, 8, 24, 0.92);
@@ -103,6 +106,51 @@ const STYLES = `
   white-space: nowrap;
 }
 #build-mode-hud.visible { display: block; }
+
+/* ── Build cost tooltip ──────────────────────────────────────── */
+/*  Follows the mouse cursor; shows each required item in         */
+/*  green (affordable) or red (short).                           */
+#build-cost-tooltip {
+  position: fixed;
+  pointer-events: none;
+  display: none;
+  z-index: 99;
+  background: rgba(10, 6, 18, 0.94);
+  border: 1px solid #3a1a5a;
+  border-radius: 3px;
+  padding: 6px 10px;
+  font-family: monospace;
+  font-size: var(--font-xs);
+  letter-spacing: 0.08em;
+  min-width: 130px;
+}
+#build-cost-tooltip.visible { display: block; }
+
+.bct-label {
+  color: #4a2a6a;
+  font-size: var(--font-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.bct-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  line-height: 1.7;
+}
+
+.bct-item { color: #9080a8; }
+
+.bct-have {
+  font-size: var(--font-xs);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.bct-have.ok  { color: #40b060; }
+.bct-have.err { color: #c04040; }
 `;
 
 function injectStyles(): void {
@@ -116,9 +164,13 @@ function injectStyles(): void {
 // ── BuildUI ───────────────────────────────────────────────────
 
 export class BuildUI extends UIPanel {
-  private readonly grid:    HTMLElement;
+  private readonly grid:         HTMLElement;
   /** Separate screen-fixed element — not part of the panel. */
-  private readonly modeHud: HTMLElement;
+  private readonly modeHud:      HTMLElement;
+  /** Mouse-following cost breakdown tooltip. */
+  private readonly costTooltip:  HTMLElement;
+  private _mouseX = 0;
+  private _mouseY = 0;
 
   constructor() {
     super({
@@ -127,6 +179,13 @@ export class BuildUI extends UIPanel {
       minWidth:  400,
       resizable: true,
     });
+
+    // Default to top-center so it doesn't obscure the play area.
+    // UIPanel sets 50%/50% inline; these overrides win because they
+    // run after super() and inline specificity is equal (last wins).
+    this.el.style.top       = "12px";
+    this.el.style.left      = "50%";
+    this.el.style.transform = "translateX(-50%)";
 
     injectStyles();
 
@@ -158,6 +217,16 @@ export class BuildUI extends UIPanel {
     this.modeHud = document.createElement("div");
     this.modeHud.id = "build-mode-hud";
     document.body.appendChild(this.modeHud);
+
+    // ── Cost tooltip (follows mouse cursor) ────────────────────
+    this.costTooltip = document.createElement("div");
+    this.costTooltip.id = "build-cost-tooltip";
+    document.body.appendChild(this.costTooltip);
+
+    window.addEventListener("mousemove", e => {
+      this._mouseX = e.clientX;
+      this._mouseY = e.clientY;
+    });
 
     // ── Key bindings ───────────────────────────────────────────
     window.addEventListener("keydown", e => {
@@ -243,7 +312,7 @@ export class BuildUI extends UIPanel {
       const fp      = def.footprint;
 
       const spriteHtml = texture
-        ? `<img class="bc-sprite" src="${texture}"
+        ? `<img class="bc-sprite" src="${texture}" draggable="false"
                style="object-fit:contain;background:transparent;" />`
         : `<div class="bc-sprite" style="background:${color}"></div>`;
 
@@ -312,16 +381,17 @@ export class BuildUI extends UIPanel {
       this.modeHud.textContent =
         `⛏ DECONSTRUCT MODE  ·  HOLD LMB OVER MACHINE  ·  [ESC/RMB] CANCEL`;
       this.modeHud.classList.add("visible");
+      this.costTooltip.classList.remove("visible");
       return;
     }
 
     if (!heldItemId) {
       this.modeHud.classList.remove("visible");
+      this.costTooltip.classList.remove("visible");
       return;
     }
 
-    // Resolve doodad name from either a direct doodad ID
-    // or an inventory item whose placesDoodadId points at a doodad.
+    // Resolve doodad from either a direct doodad ID or a placeable item.
     const itemDef   = registry.findItem(heldItemId);
     const doodadDef = itemDef?.placesDoodadId
       ? registry.findDoodad(itemDef.placesDoodadId)
@@ -329,6 +399,7 @@ export class BuildUI extends UIPanel {
 
     if (!doodadDef) {
       this.modeHud.classList.remove("visible");
+      this.costTooltip.classList.remove("visible");
       return;
     }
 
@@ -336,5 +407,64 @@ export class BuildUI extends UIPanel {
     this.modeHud.textContent =
       `◈ BUILD MODE  ·  ${doodadDef.name.toUpperCase()}  ·  ROT ${rotLabel}  ·  [R] ROTATE  [ESC/RMB] CANCEL`;
     this.modeHud.classList.add("visible");
+
+    this.updateCostTooltip(heldItemId, itemDef, doodadDef);
+  }
+
+  private updateCostTooltip(
+    heldItemId: string,
+    itemDef:    ReturnType<typeof registry.findItem>,
+    doodadDef:  NonNullable<ReturnType<typeof registry.findDoodad>>,
+  ): void {
+    // Mirror BuildSystem's prefab auto-detection: if the held slot is a raw
+    // doodad ID, check whether the player has a prefab item for it.
+    const prefabItemId: string | null = itemDef?.placesDoodadId
+      ? heldItemId
+      : (registry.findItemForDoodad(doodadDef.id)?.id ?? null);
+
+    const hasPrefab = prefabItemId !== null &&
+      this._countInInventory(prefabItemId) >= 1;
+
+    const cost: { itemId: string; qty: number }[] = hasPrefab && prefabItemId
+      ? [{ itemId: prefabItemId, qty: 1 }]
+      : (doodadDef.cost ?? doodadDef.buildCost ?? []);
+
+    if (cost.length === 0) {
+      this.costTooltip.classList.remove("visible");
+      return;
+    }
+
+    // Build rows
+    const rows = cost.map(({ itemId, qty }) => {
+      const def  = registry.findItem(itemId);
+      const name = def?.name ?? itemId;
+      const have = this._countInInventory(itemId);
+      const ok   = have >= qty;
+      const haveStr = ok ? `✓ ${have}` : `✗ ${have}/${qty}`;
+      return `
+        <div class="bct-row">
+          <span class="bct-item">${qty}× ${name}</span>
+          <span class="bct-have ${ok ? "ok" : "err"}">${haveStr}</span>
+        </div>`;
+    }).join("");
+
+    this.costTooltip.innerHTML =
+      `<div class="bct-label">Cost</div>${rows}`;
+
+    // Position offset from cursor — 18px right, 8px above so it doesn't
+    // sit under the mouse and obscure the tile being targeted.
+    const tx = this._mouseX + 18;
+    const ty = this._mouseY - this.costTooltip.offsetHeight - 8;
+    this.costTooltip.style.left = `${tx}px`;
+    this.costTooltip.style.top  = `${Math.max(4, ty)}px`;
+    this.costTooltip.classList.add("visible");
+  }
+
+  private _countInInventory(itemId: string): number {
+    let n = 0;
+    for (const slot of sm.state.player.inventory.slots) {
+      if (slot?.itemId === itemId) n += slot.qty;
+    }
+    return n;
   }
 }

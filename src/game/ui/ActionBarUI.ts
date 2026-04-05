@@ -228,9 +228,12 @@ function injectStyles(): void {
 // ── ActionBarUI ───────────────────────────────────────────────
 
 export class ActionBarUI {
-  private readonly el:        HTMLElement;
-  private readonly slots:     HTMLElement[] = [];
-  private readonly loadout:   (string | null)[] = [...DEFAULT_LOADOUT];
+  private readonly el:             HTMLElement;
+  /** display:contents wrapper — keeps slots in the flex row without
+   *  polluting the layout, and lets buildSlots() clear only these. */
+  private readonly slotsContainer: HTMLElement;
+  private readonly slots:          HTMLElement[] = [];
+  private readonly loadout:        (string | null)[] = [...DEFAULT_LOADOUT];
   private activeSlot:  number | null = null;
   private powerActive  = false;
   private powerBtn!:   HTMLButtonElement;
@@ -253,6 +256,12 @@ export class ActionBarUI {
     this.el = document.createElement("div");
     this.el.id = "action-bar";
     document.body.appendChild(this.el);
+
+    // Slots live in their own wrapper so rebuilding them never touches
+    // the power/system/UI buttons that come after.
+    this.slotsContainer = document.createElement("div");
+    this.slotsContainer.style.display = "contents";
+    this.el.appendChild(this.slotsContainer);
 
     this.buildSlots();
     this.buildPowerButton();
@@ -366,7 +375,7 @@ export class ActionBarUI {
   // ── Slot construction ─────────────────────────────────────
 
   private buildSlots(): void {
-    this.el.innerHTML = "";
+    this.slotsContainer.innerHTML = "";
     this.slots.length = 0;
 
     for (let i = 0; i < 10; i++) {
@@ -461,7 +470,7 @@ export class ActionBarUI {
         this.buildSlots();
       });
 
-      this.el.appendChild(el);
+      this.slotsContainer.appendChild(el);
       this.slots.push(el);
     }
   }

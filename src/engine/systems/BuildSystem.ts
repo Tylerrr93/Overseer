@@ -146,9 +146,12 @@ export class BuildSystem {
           cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h,
         );
         this.lastPlacementValid = this.validate(origin, fp.w, fp.h);
-        // Affordable = has prefab item OR has raw resources
-        this.lastAffordable     = heldItemDef?.placesDoodadId
-          ? sm.canAffordCost([{ itemId: heldItemId, qty: 1 }])
+        // Affordable = has prefab item (held or in inventory) OR has raw resources
+        const prefabItem = heldItemDef?.placesDoodadId
+          ? { id: heldItemId }
+          : registry.findItemForDoodad(doodadId);
+        this.lastAffordable = prefabItem
+          ? sm.canAffordCost([{ itemId: prefabItem.id, qty: 1 }])
           : sm.canAffordCost(rawCost(def));
       } else {
         this.lastPlacementValid = false;
@@ -232,19 +235,20 @@ export class BuildSystem {
     const doodad = this.getDoodadUnderCursor();
 
     if (doodad?.construction?.mode === "building") {
-      // Cancel placement — full refund of whatever was consumed.
-      const def = registry.getDoodad(doodad.defId);
-      const fp  = rotatedFootprint(def, doodad.rotation);
+      // Cancel placement — refund exactly what was consumed at placement time.
+      const def        = registry.getDoodad(doodad.defId);
+      const fp         = rotatedFootprint(def, doodad.rotation);
+      const usedPrefab = doodad.construction.usedPrefab ?? false;
       this.clearTiles(doodad.origin, fp.w, fp.h);
       sm.removeBelt(doodad.id);
       sm.removeDoodad(doodad.id);
 
-      // Mirror completeDeconstruct: prefer the placeable item refund,
-      // otherwise refund full raw resources (no partial fraction on cancel).
-      const placeableItem = registry.findItemForDoodad(def.id);
-      if (placeableItem) {
-        sm.givePlayerItem(placeableItem.id, 1);
+      if (usedPrefab) {
+        // Placed with a prefab item → return that item.
+        const placeableItem = registry.findItemForDoodad(def.id);
+        if (placeableItem) sm.givePlayerItem(placeableItem.id, 1);
       } else {
+        // Placed with raw resources → return those resources in full.
         for (const c of rawCost(def)) {
           if (c.qty > 0) sm.givePlayerItem(c.itemId, c.qty);
         }
@@ -292,37 +296,33 @@ export class BuildSystem {
       return;
     }
 
-    // ── Two build paths ────────────────────────────────────────
-    //  Prefab   → player has the matching placeable item.
-    //            Consume 1 item; build time is halved (quick re-install).
-    //  Raw      → player has the raw resource cost but no prefab.
-    //            Consume raw resources; full build time applies.
+    // ── Resolve build path ─────────────────────────────────────
+    //  Prefab   → held item IS a placeable item, OR player has one
+    //            in inventory for this doodad (auto-detected).
+    //            Consume 1 prefab; build time is halved.
+    //  Raw      → no prefab available — consume raw resources.
     //  Neither  → cannot build.
-    const usingPrefab = Boolean(heldItemDef?.placesDoodadId);
 
-    if (usingPrefab) {
-      if (!sm.canAffordCost([{ itemId: heldItemId, qty: 1 }])) {
-        // Check if they have raw resources as a fallback message hint
-        const hasRaw = sm.canAffordCost(rawCost(def));
-        bus.emit("ui:notification", {
-          message:  hasRaw
-            ? `No prefab ${heldItemDef!.name} — use raw resources from the action bar instead.`
-            : `No ${heldItemDef!.name} in inventory.`,
-          severity: "warn",
-        });
-        return;
-      }
-      sm.tryConsumePlayerItems([{ itemId: heldItemId, qty: 1 }]);
+    // Prefer the held item itself if it's a prefab, otherwise look
+    // in inventory for a matching placeable item for this doodad.
+    const prefabItemId: string | null = heldItemDef?.placesDoodadId
+      ? heldItemId
+      : (registry.findItemForDoodad(doodadId)?.id ?? null);
+
+    const usingPrefab = prefabItemId !== null &&
+      sm.canAffordCost([{ itemId: prefabItemId, qty: 1 }]);
+
+    if (usingPrefab && prefabItemId) {
+      sm.tryConsumePlayerItems([{ itemId: prefabItemId, qty: 1 }]);
     } else {
       const cost = rawCost(def);
       if (!sm.canAffordCost(cost)) {
         const missing = this.missingCostString(cost);
-        const hasItem = registry.findItemForDoodad(doodadId);
         bus.emit("ui:notification", {
           message:  cost.length === 0
             ? "Cannot place here."
-            : hasItem
-              ? `Need raw resources (${missing}) or a prefab ${hasItem.name}.`
+            : prefabItemId
+              ? `Not enough resources — need ${missing} or a prefab in your inventory.`
               : `Not enough resources — need ${missing}.`,
           severity: "warn",
         });
@@ -382,6 +382,7 @@ export class BuildSystem {
           mode:       "building",
           progressMs: 0,
           totalMs:    buildTimeMs,
+          usedPrefab: usingPrefab,
         },
       });
     }
