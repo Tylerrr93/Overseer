@@ -24,8 +24,27 @@ export const GameConfig = Object.freeze({
   // Persistence
   SAVE_KEY:              "digitized_overseer_save",
   SAVE_TS_KEY:           "digitized_overseer_save_ts",   // unix-ms timestamp of last save
-  SAVE_VERSION:          2,   // bumped: fuel slot added to iron_extractor
+  SAVE_VERSION:          3,   // v3: terrain overhaul — ore tiles replaced by FeatureState system
   AUTOSAVE_INTERVAL_MS:  60_000,
+
+  // Resource generation (Bobiverse post-apocalyptic scarcity)
+  /**
+   * Noise threshold above which a feature is considered present.
+   * Higher = sparser. Range 0–1; 0.92 gives ~8% coverage before cluster check.
+   */
+  RESOURCE_SPARSITY:          0.92,
+  /**
+   * Maximum tile radius around a noise peak that remains part of the
+   * same deposit cluster. Larger = bigger patches.
+   */
+  RESOURCE_CLUSTER_SIZE:      3,
+  /** Starting yield for a finite resource feature node. */
+  RESOURCE_BASE_YIELD:        400,
+  /**
+   * When true, extractors consume remainingYield each cycle and destroy
+   * the feature when it reaches 0.  When false, features are infinite.
+   */
+  RESOURCE_DEPLETION_ENABLED: true,
 
   // UI
   UI_SCALE_KEY:          "digitized_overseer_ui_scale",

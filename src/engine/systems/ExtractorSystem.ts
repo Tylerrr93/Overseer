@@ -1,35 +1,39 @@
 // ============================================================
 //  src/engine/systems/ExtractorSystem.ts
 //
-//  Ticks all placed extractors. Each cycle:
-//    1. Check the tile under the extractor matches requiredTile.
-//    2. Check there is fuel in the fuel slot (if fuelPerCycle > 0).
-//    3. Consume fuel and produce one unit of output.
-//
-//  Add new extractor types in EXTRACTOR_CONFIG — no engine changes.
+//  Ticks all placed extractors.  Each cycle:
+//    1. Find the FeatureState at the extractor's origin tile.
+//    2. Verify the feature's extractorTag matches this machine.
+//    3. Check power / fuel (same hybrid logic as before).
+//    4. Produce one unit of the feature's yieldsItemId.
+//    5. If RESOURCE_DEPLETION_ENABLED, decrement remainingYield;
+//       delete the feature from the chunk map when it hits 0.
+//       Infinite features (def.infinite === true) are never deleted.
 // ============================================================
 
-import { sm }              from "@engine/core/StateManager";
-import { registry }        from "@engine/core/Registry";
-import { GameConfig }      from "@engine/core/GameConfig";
+import { sm }         from "@engine/core/StateManager";
+import { registry }   from "@engine/core/Registry";
+import { GameConfig } from "@engine/core/GameConfig";
 import { getAbsolutePort } from "@engine/utils/portUtils";
 import type { DoodadState } from "@t/state";
-import type { TileType }    from "@t/state";
 
-interface ExtractorConfig {
-  requiredTile:   TileType;
-  outputItemId:   string;
-  /** How many fuel units consumed per extraction cycle. 0 = no fuel needed. */
-  fuelPerCycle:   number;
-}
+// machineTags handled by this system
+const EXTRACTOR_TAGS = new Set([
+  "extractor_scrap",
+  "extractor_iron",
+  "extractor_copper",
+  "extractor_coal",
+]);
 
-const EXTRACTOR_CONFIG: Record<string, ExtractorConfig> = {
-  extractor_iron:   { requiredTile: "ore_iron",   outputItemId: "iron_ore",   fuelPerCycle: 1 },
-  extractor_copper: { requiredTile: "ore_copper",  outputItemId: "copper_ore", fuelPerCycle: 1 },
-  extractor_coal:   { requiredTile: "ore_coal",    outputItemId: "coal",       fuelPerCycle: 1 },
+/** Fuel units consumed per extraction cycle (0 = no fuel needed). */
+const FUEL_PER_CYCLE: Record<string, number> = {
+  extractor_scrap:   0,
+  extractor_iron:    1,
+  extractor_copper:  1,
+  extractor_coal:    1,
 };
 
-const CS            = GameConfig.CHUNK_SIZE;
+const CS             = GameConfig.CHUNK_SIZE;
 const BELT_MAX_ITEMS = 4;
 
 export class ExtractorSystem {
@@ -37,23 +41,27 @@ export class ExtractorSystem {
     for (const doodad of sm.allDoodads()) {
       const def = registry.findDoodad(doodad.defId);
       if (!def?.machineTag) continue;
+      if (!EXTRACTOR_TAGS.has(def.machineTag)) continue;
 
-      const cfg = EXTRACTOR_CONFIG[def.machineTag];
-      if (!cfg) continue;
-
-      this.tickExtractor(doodad, cfg, def.tickIntervalMs ?? 2000, deltaMs);
+      this.tickExtractor(
+        doodad,
+        def.machineTag,
+        FUEL_PER_CYCLE[def.machineTag] ?? 0,
+        def.tickIntervalMs ?? 2000,
+        deltaMs,
+      );
     }
   }
 
   // ── Tick ──────────────────────────────────────────────────
 
   private tickExtractor(
-    doodad:   DoodadState,
-    cfg:      ExtractorConfig,
-    interval: number,
-    deltaMs:  number,
+    doodad:      DoodadState,
+    machineTag:  string,
+    fuelPerCycle: number,
+    interval:    number,
+    deltaMs:     number,
   ): void {
-
     if (doodad.construction?.mode === "building") return;
 
     // Belt push runs every frame so items drain continuously
@@ -65,70 +73,87 @@ export class ExtractorSystem {
 
     while (doodad.tickAccumulatorMs >= interval) {
       doodad.tickAccumulatorMs -= interval;
-      this.tryExtract(doodad, cfg);
+      this.tryExtract(doodad, machineTag, fuelPerCycle);
     }
   }
 
-  private tryExtract(doodad: DoodadState, cfg: ExtractorConfig): void {
+  private tryExtract(
+    doodad:      DoodadState,
+    machineTag:  string,
+    fuelPerCycle: number,
+  ): void {
     const def = registry.getDoodad(doodad.defId);
 
-    // 1. Check tile under origin is the right ore
-    const tile = this.getTile(doodad.origin.tx, doodad.origin.ty);
-    if (!tile || tile.type !== cfg.requiredTile) return;
+    // 1. Find the feature at the extractor's origin tile
+    const featureInfo = this.getFeatureAt(doodad.origin.tx, doodad.origin.ty);
+    if (!featureInfo) return;
 
-    // 2. Power / fuel check — hybrid logic mirrors DoodadSystem:
-    //    - Grid-powered (powered === true)  → skip fuel, run free
-    //    - Off-grid (powered === false)     → require fuel in slot
-    //    - powerDraw === 0                  → always require fuel (no grid option)
+    const { chunk, localKey, featureState } = featureInfo;
+    const featureDef = registry.findFeature(featureState.featureId);
+    if (!featureDef) return;
+
+    // 2. Check this extractor can mine this feature type
+    if (featureDef.extractorTag !== undefined && featureDef.extractorTag !== machineTag) return;
+
+    // 3. Power / fuel check — same hybrid logic as before
     if (def.powerDraw > 0) {
       if (!doodad.powered) {
-        // Not on the grid — fall back to fuel slot
-        if (cfg.fuelPerCycle > 0) {
-          const fuelSlotIdx = this.findFuelSlot(doodad, def.slots, cfg.fuelPerCycle);
-          if (fuelSlotIdx === -1) return; // stall — no grid, no fuel
-          const fuelSlot = doodad.inventory[fuelSlotIdx]!;
-          fuelSlot.qty -= cfg.fuelPerCycle;
-          if (fuelSlot.qty <= 0) doodad.inventory[fuelSlotIdx] = null;
+        // Off-grid: require fuel
+        if (fuelPerCycle > 0) {
+          const fuelIdx = this.findFuelSlot(doodad, def.slots, fuelPerCycle);
+          if (fuelIdx === -1) return;
+          const fuelSlot = doodad.inventory[fuelIdx]!;
+          fuelSlot.qty -= fuelPerCycle;
+          if (fuelSlot.qty <= 0) doodad.inventory[fuelIdx] = null;
         }
       }
-      // else: grid-powered — no fuel consumed this cycle
-    } else if (cfg.fuelPerCycle > 0) {
-      // powerDraw === 0 means this extractor is always fuel-driven (e.g. iron extractor)
-      const fuelSlotIdx = this.findFuelSlot(doodad, def.slots, cfg.fuelPerCycle);
-      if (fuelSlotIdx === -1) return;
-      const fuelSlot = doodad.inventory[fuelSlotIdx]!;
-      fuelSlot.qty -= cfg.fuelPerCycle;
-      if (fuelSlot.qty <= 0) doodad.inventory[fuelSlotIdx] = null;
+      // else: grid-powered — no fuel consumed
+    } else if (fuelPerCycle > 0) {
+      // Always fuel-driven (powerDraw === 0)
+      const fuelIdx = this.findFuelSlot(doodad, def.slots, fuelPerCycle);
+      if (fuelIdx === -1) return;
+      const fuelSlot = doodad.inventory[fuelIdx]!;
+      fuelSlot.qty -= fuelPerCycle;
+      if (fuelSlot.qty <= 0) doodad.inventory[fuelIdx] = null;
     }
 
-    // 3. Write to output slot
+    // 4. Write to output slot
+    const outputItemId = featureDef.yieldsItemId;
+    let produced = false;
     for (let i = 0; i < def.slots.length; i++) {
       const slotDef = def.slots[i];
       if (!slotDef || slotDef.role !== "output") continue;
 
       const slot = doodad.inventory[i];
       if (slot === null || slot === undefined) {
-        doodad.inventory[i] = { itemId: cfg.outputItemId, qty: 1 };
-        return;
+        doodad.inventory[i] = { itemId: outputItemId, qty: 1 };
+        produced = true;
+        break;
       }
-      if (slot.itemId === cfg.outputItemId && slot.qty < slotDef.capacity) {
+      if (slot.itemId === outputItemId && slot.qty < slotDef.capacity) {
         slot.qty += 1;
-        return;
+        produced = true;
+        break;
       }
     }
-    // Output full — stall (backpressure). Fuel already consumed this cycle.
+
+    if (!produced) return; // Output full — backpressure; don't deplete
+
+    // 5. Deplete feature (unless infinite or depletion disabled)
+    if (GameConfig.RESOURCE_DEPLETION_ENABLED && !featureDef.infinite) {
+      featureState.remainingYield -= 1;
+      if (featureState.remainingYield <= 0) {
+        delete chunk.features![localKey];
+      }
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────
 
-  /**
-   * Returns the index of the first fuel slot with at least `required` qty.
-   * Returns -1 if no fuel available.
-   */
   private findFuelSlot(
-    doodad:    DoodadState,
-    slotDefs:  ReturnType<typeof registry.getDoodad>["slots"],
-    required:  number,
+    doodad:   DoodadState,
+    slotDefs: ReturnType<typeof registry.getDoodad>["slots"],
+    required: number,
   ): number {
     for (let i = 0; i < slotDefs.length; i++) {
       const sd = slotDefs[i];
@@ -168,15 +193,24 @@ export class ExtractorSystem {
     }
   }
 
-  // ── Tile lookup ───────────────────────────────────────────
+  // ── Feature lookup ────────────────────────────────────────
 
-  private getTile(tx: number, ty: number) {
+  private getFeatureAt(tx: number, ty: number): {
+    chunk:      import("@t/state").Chunk;
+    localKey:   string;
+    featureState: import("@t/state").FeatureState;
+  } | null {
     const cx = Math.floor(tx / CS);
     const cy = Math.floor(ty / CS);
     const chunk = sm.getChunk(cx, cy);
-    if (!chunk) return null;
-    const lx = ((tx % CS) + CS) % CS;
-    const ly = ((ty % CS) + CS) % CS;
-    return chunk.tiles[ly]?.[lx] ?? null;
+    if (!chunk?.features) return null;
+
+    const lx  = ((tx % CS) + CS) % CS;
+    const ly  = ((ty % CS) + CS) % CS;
+    const key = `${lx},${ly}`;
+    const fs  = chunk.features[key];
+    if (!fs) return null;
+
+    return { chunk, localKey: key, featureState: fs };
   }
 }

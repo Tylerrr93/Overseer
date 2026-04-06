@@ -20,7 +20,10 @@ export interface TilePos  { tx: number; ty: number; }
 
 export type TileType =
   | "void" | "ground" | "rubble" | "water"
-  | "ore_iron" | "ore_copper" | "ore_coal" | "organic";
+  | "rock" | "irradiated" | "organic"
+  // Legacy ore tile types — kept for save compatibility only.
+  // New world gen does not produce these; use FeatureState instead.
+  | "ore_iron" | "ore_copper" | "ore_coal";
 
 export interface Tile {
   type:     TileType;
@@ -28,10 +31,22 @@ export interface Tile {
   passable: boolean;
 }
 
+/** Mutable state of one resource feature placed on top of a tile. */
+export interface FeatureState {
+  featureId:      string;
+  remainingYield: number;
+}
+
 export interface Chunk {
   cx: number; cy: number;
   tiles:     Tile[][];
   generated: boolean;
+  /**
+   * Resource features keyed by local tile coordinate "lx,ly".
+   * A feature sits on top of the base tile and is mined by extractors.
+   * Optional so that old saves without this field don't crash on load.
+   */
+  features?: Record<string, FeatureState>;
 }
 
 // ── Inventory ─────────────────────────────────────────────────
@@ -83,6 +98,15 @@ export interface BeltSegment {
 
 // ── Player ────────────────────────────────────────────────────
 
+/** Live harvest action — null when idle. */
+export interface HarvestProgress {
+  /** World tile coordinate being harvested. */
+  tx:        number;
+  ty:        number;
+  elapsedMs: number;
+  totalMs:   number;
+}
+
 export interface PlayerState {
   pos:               Vec2;
   cursorWorldPos:    Vec2;
@@ -94,6 +118,8 @@ export interface PlayerState {
   maxHealth:         number;
   /** Active cursor interaction mode. */
   cursorMode:        CursorMode;
+  /** Non-null while the player is holding down a manual harvest. */
+  harvestProgress:   HarvestProgress | null;
 }
 
 // ── Root Game State ───────────────────────────────────────────

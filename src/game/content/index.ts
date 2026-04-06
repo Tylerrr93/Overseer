@@ -8,18 +8,21 @@
 //  then import and include them here.  Nothing else.
 // ============================================================
 
-import { registry } from "@engine/core/Registry";
-import { ITEMS }   from "./items";
-import { RECIPES } from "./recipes";
-import { DOODADS } from "./doodads";
+import { registry }  from "@engine/core/Registry";
+import { ITEMS }    from "./items";
+import { RECIPES }  from "./recipes";
+import { DOODADS }  from "./doodads";
+import { FEATURES } from "./features";
 
 export function bootstrapContent(): void {
   registry.registerItems(ITEMS);
   registry.registerRecipes(RECIPES);
   registry.registerDoodads(DOODADS);
+  registry.registerFeatures(FEATURES);
 
   console.info(
     `[Content] Registered: ${ITEMS.length} items, ` +
-    `${RECIPES.length} recipes, ${DOODADS.length} doodads.`
+    `${RECIPES.length} recipes, ${DOODADS.length} doodads, ` +
+    `${FEATURES.length} features.`
   );
 }

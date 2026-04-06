@@ -55,14 +55,17 @@ const T  = GameConfig.TILE_SIZE;
 const CS = GameConfig.CHUNK_SIZE;
 
 const TILE_COLOR: Record<string, number> = {
-  void:       0x0a0a0a,
-  ground:     0x2a2a1e,
-  rubble:     0x3d3830,
-  water:      0x0d2a3d,
-  ore_iron:   0x3d2a1e,
-  ore_copper: 0x3d2a0d,
-  ore_coal:   0x1a1a1a,
-  organic:    0x1a2a0d,
+  void:        0x0a0a0a,
+  ground:      0x1e1e14,
+  rubble:      0x2e2820,
+  rock:        0x1a1a1a,
+  irradiated:  0x1a240a,
+  water:       0x0d2a3d,
+  organic:     0x1a2a0d,
+  // Legacy ore tile types — rendered as ground-equivalent if somehow present
+  ore_iron:    0x1e1e14,
+  ore_copper:  0x1e1e14,
+  ore_coal:    0x1e1e14,
 };
 
 const PORT_OUT  = 0x00ff64;
@@ -104,6 +107,7 @@ export class Renderer {
   // ── Layers ────────────────────────────────────────────────
   private worldContainer!: PIXI.Container;
   private tileLayer!:       PIXI.Container;
+  private featureLayer!:    PIXI.Container;  // resource nodes — above tiles, below belts
   private beltLayer!:       PIXI.Container;
   private doodadLayer!:     PIXI.Container;
   private itemLayer!:       PIXI.Container;
@@ -123,6 +127,10 @@ export class Renderer {
   // ── Tile sync ─────────────────────────────────────────────
   private seenChunks   = new Set<string>();
   private chunkSprites = new Map<string, PIXI.Sprite>();
+
+  // ── Feature sync ──────────────────────────────────────────
+  /** "tx,ty" → feature sprite — cleared when feature is depleted */
+  private featureSprites  = new Map<string, PIXI.Graphics>();
 
   // ── Doodad sync ───────────────────────────────────────────
   /** doodadId → Container(body + border + label) */
@@ -170,6 +178,7 @@ export class Renderer {
     this.app.stage.addChild(this.worldContainer);
 
     this.tileLayer    = new PIXI.Container();
+    this.featureLayer = new PIXI.Container();
     this.beltLayer    = new PIXI.Container();
     this.doodadLayer  = new PIXI.Container();
     this.itemLayer    = new PIXI.Container();
@@ -177,7 +186,7 @@ export class Renderer {
     this.overlayLayer = new PIXI.Container();
 
     for (const layer of [
-      this.tileLayer, this.beltLayer, this.doodadLayer,
+      this.tileLayer, this.featureLayer, this.beltLayer, this.doodadLayer,
       this.itemLayer, this.entityLayer, this.overlayLayer,
     ]) this.worldContainer.addChild(layer);
 
@@ -236,6 +245,7 @@ export class Renderer {
 
     // Sync persistent scene objects
     this.syncTiles();
+    this.syncFeatures();
     this.syncBelts();
     this.syncDoodads();
     this.syncBeltItems();
@@ -299,6 +309,57 @@ export class Renderer {
       sprite.y = chunk.cy * CS * T;
       this.tileLayer.addChild(sprite);
       this.chunkSprites.set(key, sprite);
+    }
+  }
+
+  // ── Feature sync ──────────────────────────────────────────
+  //  One Graphics square per live feature, keyed by world tile "tx,ty".
+  //  When a feature is depleted and removed from chunk.features, its
+  //  sprite is destroyed here on the next frame.
+
+  private syncFeatures(): void {
+    // Build the full set of live feature keys this frame
+    const live = new Set<string>();
+
+    for (const chunk of Object.values(sm.state.chunks)) {
+      if (!chunk.generated || !chunk.features) continue;
+      for (const [localKey, fs] of Object.entries(chunk.features)) {
+        const [lxStr, lyStr] = localKey.split(",");
+        const lx = parseInt(lxStr!, 10);
+        const ly = parseInt(lyStr!, 10);
+        const tx = chunk.cx * CS + lx;
+        const ty = chunk.cy * CS + ly;
+        const worldKey = `${tx},${ty}`;
+        live.add(worldKey);
+
+        if (!this.featureSprites.has(worldKey)) {
+          // Resolve the sprite colour from the FeatureDef
+          const featureDef = registry.findFeature(fs.featureId);
+          const color = featureDef?.sprite.startsWith("#")
+            ? hexToNum(featureDef.sprite)
+            : 0x888866;
+
+          const gfx = new PIXI.Graphics();
+          // Draw an inset filled square with a bright border to stand out from terrain
+          const inset = 4;
+          gfx.rect(inset, inset, T - inset * 2, T - inset * 2).fill({ color, alpha: 0.92 });
+          gfx.rect(inset, inset, T - inset * 2, T - inset * 2)
+             .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
+          gfx.x = tx * T;
+          gfx.y = ty * T;
+          this.featureLayer.addChild(gfx);
+          this.featureSprites.set(worldKey, gfx);
+        }
+      }
+    }
+
+    // Remove sprites whose features have been depleted
+    for (const [key, gfx] of this.featureSprites) {
+      if (!live.has(key)) {
+        this.featureLayer.removeChild(gfx);
+        gfx.destroy();
+        this.featureSprites.delete(key);
+      }
     }
   }
 
@@ -682,6 +743,32 @@ export class Renderer {
         .stroke({ color: 0x000000, alpha: 0.5, width: 0.5 });
     }
 
+    // ── Manual harvest progress bar ────────────────────────────
+    const hp = sm.state.player.harvestProgress;
+    if (hp) {
+      const pct    = Math.min(hp.elapsedMs / hp.totalMs, 1);
+      const barW   = T - 6;
+      const barH   = 5;
+      const bx     = hp.tx * T + 3;
+      // Position bar just above the top edge of the target tile
+      const by     = hp.ty * T - barH - 3;
+
+      // Dark backing track
+      this.overlayGfx
+        .rect(bx, by, barW, barH)
+        .fill({ color: 0x000000, alpha: 0.80 });
+
+      // Animated fill — cyan-green, brightens near completion
+      const fillColor = pct > 0.85 ? 0x44ffcc : 0x00cc88;
+      this.overlayGfx
+        .rect(bx, by, Math.round(barW * pct), barH)
+        .fill({ color: fillColor, alpha: 0.95 });
+
+      // Thin border so the bar reads against bright terrain
+      this.overlayGfx
+        .rect(bx, by, barW, barH)
+        .stroke({ color: 0x000000, alpha: 0.50, width: 0.5 });
+    }
   }
 
   // ── Overlay: power grid ───────────────────────────────────

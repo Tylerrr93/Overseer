@@ -111,6 +111,16 @@ export abstract class UIPanel {
       this.el.style.zIndex = String(z);
     });
 
+    // ── ESC closes this panel ─────────────────────────────────
+    // Registered on every UIPanel subclass so ESC always works
+    // regardless of which panel currently has focus.
+    window.addEventListener("keydown", e => {
+      if (e.key === "Escape" && this.isOpen) {
+        e.preventDefault();
+        this.close();
+      }
+    });
+
     // Bring to front on any click inside this panel.
     this.el.addEventListener("mousedown", () => {
       panelManager.focus(opts.name);

@@ -300,7 +300,7 @@ export class SystemMenuUI extends UIPanel {
     this.el.innerHTML = `
       <div id="system-menu-header">
         ⚙ System
-        <span>ESC — CLOSE</span>
+        <span>ESC — CLOSE  ·  DRAG TO MOVE</span>
       </div>
 
       <!-- UI Scale -->
@@ -377,11 +377,6 @@ export class SystemMenuUI extends UIPanel {
     this.scaleSlider.addEventListener("change", () => {
       const v = parseFloat(this.scaleSlider.value);
       localStorage.setItem(GameConfig.UI_SCALE_KEY, String(v));
-    });
-
-    // Escape key closes the panel
-    window.addEventListener("keydown", e => {
-      if (e.key === "Escape" && this.isOpen) this.close();
     });
 
     // Any click outside the wipe button resets the confirm state

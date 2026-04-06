@@ -170,11 +170,11 @@ export class InventoryUI extends UIPanel {
     this.el.innerHTML = `
       <div class="ui-panel-header" id="inv-header">
         <h2>⬡ Inventory</h2>
-        <span class="hint">[E] CLOSE · DRAG TO MOVE</span>
+        <span class="hint">E / ESC — CLOSE  ·  DRAG TO MOVE</span>
       </div>
       <div id="inventory-grid"></div>
       <div class="ui-panel-footer">
-        SPACE / CLICK — GATHER  ·  E — TOGGLE INVENTORY
+        STAND ON A RESOURCE NODE  ·  HOLD SPACE OR LMB TO HARVEST
       </div>
     `;
 

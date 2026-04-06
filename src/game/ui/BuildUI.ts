@@ -196,7 +196,7 @@ export class BuildUI extends UIPanel {
     this.el.innerHTML = `
       <div class="ui-panel-header" id="build-header">
         <h2>◈ Fabrication Menu</h2>
-        <span class="hint">[B] CLOSE · DRAG TO MOVE</span>
+        <span class="hint">B / ESC — CLOSE  ·  DRAG TO MOVE</span>
       </div>
       <div id="build-grid"></div>
       <div class="ui-panel-footer">
@@ -245,13 +245,7 @@ export class BuildUI extends UIPanel {
           }
           break;
 
-        case "Escape":
-          // Close the panel.  BuildSystem's own Escape handler clears
-          // heldItemId; updateHud() sees the cleared state immediately
-          // because both handlers fire in the same event dispatch.
-          this.close();
-          this.updateHud();
-          break;
+        // Escape: UIPanel base handles close(); onClose() calls updateHud().
       }
     });
 

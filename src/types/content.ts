@@ -37,6 +37,29 @@ export interface DoodadPort {
   dx: number; dy: number; dir: CardinalDir; role: "input" | "output";
 }
 
+export interface FeatureDef {
+  id:           string;
+  name:         string;
+  /** Hex colour string (e.g. "#7a4a3a") used by the renderer as a placeholder sprite. */
+  sprite:       string;
+  /** The item this feature yields when extracted. */
+  yieldsItemId: string;
+  /** Starting quantity when the feature is generated. Ignored when infinite. */
+  baseYield:    number;
+  /** If true, remainingYield never decrements — effectively infinite. */
+  infinite?:    boolean;
+  /**
+   * machineTag of the extractor doodad that can mine this feature.
+   * Leave undefined to allow any extractor.
+   */
+  extractorTag?: string;
+  /**
+   * Milliseconds the player must hold the harvest action to collect
+   * one unit from this feature.  Defaults to 3000ms if omitted.
+   */
+  harvestTimeMs?: number;
+}
+
 export interface DoodadDef {
   id: string; name: string; description: string;
   sprite: string;

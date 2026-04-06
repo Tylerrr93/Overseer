@@ -125,7 +125,7 @@ export const DOODADS: DoodadDef[] = [
   {
     id:          "iron_extractor",
     name:        "Iron Extractor",
-    description: "Drills iron ore. Requires coal as fuel — load it manually via F. Place on a dark reddish ore_iron tile. Output port faces South by default, rotate with R before placing.",
+    description: "Drills iron ore from an iron vein. Requires coal as fuel — load via F. Output port faces South; rotate with R before placing.",
     sprite:      "#5a4a3a",
     footprint:   { w: 1, h: 1 },
     slots: [
@@ -152,7 +152,7 @@ export const DOODADS: DoodadDef[] = [
     id:          "coal_extractor",
     name:        "Coal Extractor",
     showLabel:   false,
-    description: "Drills coal ore. Requires coal as fuel — load it manually via F. Place on a grey coal ore tile.",
+    description: "Drills coal from a coal seam. Grid-powered. Load initial fuel manually via F to start; connects to the power grid for sustained operation.",
     sprite:      "#7e7e7e",
     footprint:   { w: 1, h: 1 },
     slots: [

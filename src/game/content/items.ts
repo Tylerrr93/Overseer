@@ -41,15 +41,6 @@ export const ITEMS: ItemDef[] = [
     stackSize:   100,
     tags:        ["raw", "fuel"],
   },
-  {
-    id:          "organic_matter",
-    name:        "Organic Matter",
-    description: "Decomposed biomass. Smells awful. Surprisingly useful.",
-    sprite:      "#3a4a1a",
-    stackSize:   50,
-    tags:        ["raw", "organic"],
-  },
-
   // ── Refined materials ────────────────────────────────────
   {
     id:          "iron_plate",
@@ -153,7 +144,7 @@ export const ITEMS: ItemDef[] = [
   {
     id:             "item_iron_extractor",
     name:           "Iron Extractor",
-    description:    "Drills iron ore. Place on an ore_iron tile.",
+    description:    "Drills iron ore from an iron vein. Fuel-powered.",
     sprite:         "#5a4a3a",
     stackSize:      10,
     tags:           ["placeable", "machine"],
@@ -162,7 +153,7 @@ export const ITEMS: ItemDef[] = [
   {
     id:             "item_coal_extractor",
     name:           "Coal Extractor",
-    description:    "Drills coal ore. Place on a coal ore tile.",
+    description:    "Drills coal from a coal seam. Grid-powered.",
     sprite:         "#7e7e7e",
     stackSize:      10,
     tags:           ["placeable", "machine"],

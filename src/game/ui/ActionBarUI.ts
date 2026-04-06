@@ -235,13 +235,13 @@ export class ActionBarUI {
   private readonly slots:          HTMLElement[] = [];
   private readonly loadout:        (string | null)[] = [...DEFAULT_LOADOUT];
   private activeSlot:  number | null = null;
-  private powerActive  = false;
   private powerBtn!:   HTMLButtonElement;
 
   // ── Optional panel refs for shortcut buttons ──────────────
   private inventoryPanel: UIPanel | null = null;
   private buildPanel:     UIPanel | null = null;
   private systemPanel:    UIPanel | null = null;
+  private powerPanel:     UIPanel | null = null;
   private invBtn!:        HTMLButtonElement;
   private buildBtn!:      HTMLButtonElement;
   private systemBtn!:     HTMLButtonElement;
@@ -249,6 +249,7 @@ export class ActionBarUI {
   setInventoryPanel(panel: UIPanel): void { this.inventoryPanel = panel; }
   setBuildPanel(panel: UIPanel):     void { this.buildPanel     = panel; }
   setSystemPanel(panel: UIPanel):    void { this.systemPanel    = panel; }
+  setPowerPanel(panel: UIPanel):     void { this.powerPanel     = panel; }
 
   constructor() {
     injectStyles();
@@ -268,12 +269,6 @@ export class ActionBarUI {
     this.buildUIButtons();
     this.buildSystemButton();
     this.bindKeys();
-
-    // Keep button in sync with whoever emits the event (Alt key, etc.)
-    bus.on("power:overlay:toggle", ({ active }) => {
-      this.powerActive = active !== undefined ? active : !this.powerActive;
-      this.powerBtn.classList.toggle("active", this.powerActive);
-    });
   }
 
   // ── Power button ─────────────────────────────────────────
@@ -549,9 +544,11 @@ export class ActionBarUI {
       el.classList.toggle("active", i === this.activeSlot);
     }
 
-    // Keep UI shortcut buttons in sync with their panel's open state
+    // Keep all UI shortcut buttons in sync with their panel's open state.
+    // Polled every frame so ESC / external closes are always reflected.
     this.invBtn?.classList.toggle("active",    this.inventoryPanel?.isCurrentlyOpen() ?? false);
     this.buildBtn?.classList.toggle("active",  this.buildPanel?.isCurrentlyOpen()     ?? false);
     this.systemBtn?.classList.toggle("active", this.systemPanel?.isCurrentlyOpen()    ?? false);
+    this.powerBtn?.classList.toggle("active",  this.powerPanel?.isCurrentlyOpen()     ?? false);
   }
 }

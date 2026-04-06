@@ -163,7 +163,7 @@ export class PowerUI extends UIPanel {
     this.el.innerHTML = `
       <div id="power-ui-title">
         ⚡ Power Networks
-        <span>ALT / ⚡ — TOGGLE</span>
+        <span>ALT / ⚡ TOGGLE  ·  ESC CLOSE</span>
       </div>
       <div id="power-ui-body"></div>
       <div id="power-unconnected"></div>
@@ -177,19 +177,30 @@ export class PowerUI extends UIPanel {
     // Wire the title bar as the drag handle
     this.bindDragHandle(this.el.querySelector("#power-ui-title") as HTMLElement);
 
-    // Alt key → toggle
+    // Alt key → toggle.  capture:true fires before any focused element
+    // (button, input) can intercept it, preventing browser tab/accesskey
+    // navigation from triggering while our panels are open.
     window.addEventListener("keydown", e => {
       if (e.key === "Alt") {
         e.preventDefault();
+        e.stopPropagation();
         bus.emit("power:overlay:toggle", {});
       }
-    });
+    }, { capture: true });
 
     // Subscribe so this panel stays in sync with any emitter
     // (Alt key, ActionBar ⚡ button, etc.).
     bus.on("power:overlay:toggle", ({ active }) => {
       const next = active !== undefined ? active : !this.isOpen;
       if (next) this.open(); else this.close();
+    });
+
+    // ESC closes the panel
+    window.addEventListener("keydown", e => {
+      if (e.key === "Escape" && this.isOpen) {
+        e.preventDefault();
+        this.close();
+      }
     });
   }
 

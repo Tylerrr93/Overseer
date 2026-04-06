@@ -2,33 +2,30 @@
 //  src/engine/systems/PlayerSystem.ts
 //  Handles keyboard/mouse input → player movement + gathering.
 //
-//  Uses a GatherFeedback interface so the engine doesn't
-//  import from @game — dependency stays one-way.
+//  Harvest model (v2 — feature-based):
+//    • LMB held on a feature tile OR Space bar held starts a timed harvest.
+//    • A HarvestProgress entry is written to PlayerState so the Renderer
+//      can draw a progress bar over the target tile.
+//    • Completing the bar gives 1 unit of the feature's yieldsItemId.
+//    • Moving cancels the current harvest.
+//    • If LMB/Space is still held after completion, the harvest restarts
+//      immediately on the same tile (hold-to-mine loop).
+//    • Depletion uses GameConfig.RESOURCE_DEPLETION_ENABLED / featureDef.infinite.
 // ============================================================
 
 import { sm }           from "@engine/core/StateManager";
+import { registry }     from "@engine/core/Registry";
 import { panelManager } from "@engine/core/PanelManager";
-import { bus }        from "@engine/core/EventBus";
-import { GameConfig } from "@engine/core/GameConfig";
-import { CursorMode }    from "@t/state";
-import type { TileType } from "@t/state";
+import { bus }          from "@engine/core/EventBus";
+import { GameConfig }   from "@engine/core/GameConfig";
+import { CursorMode }   from "@t/state";
+import type { Chunk, FeatureState } from "@t/state";
 
-// ── Tile → item mapping ───────────────────────────────────────
-
-const TILE_TO_ITEM: Partial<Record<TileType, string>> = {
-  ore_iron:   "iron_ore",
-  ore_copper: "copper_ore",
-  ore_coal:   "coal",
-  organic:    "organic_matter",
-  rubble:     "scrap_metal",
-};
-
-const GATHER_COOLDOWN_MS = 600;
+const DEFAULT_HARVEST_MS = 3000;
 
 /**
  * Keys that are always forwarded to the movement set regardless
- * of whether any UI panel is currently open.  This lets the player
- * navigate the world while viewing the inventory, build menu, etc.
+ * of whether any UI panel is currently open.
  */
 const MOVEMENT_KEYS = new Set([
   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
@@ -43,44 +40,52 @@ export interface GatherFeedbackReceiver {
 // ─────────────────────────────────────────────────────────────
 
 export class PlayerSystem {
-  private readonly keys    = new Set<string>();
-  private gatherCooldownMs = 0;
+  private readonly keys = new Set<string>();
+  private mouseHeld     = false;
   private feedbackUI: GatherFeedbackReceiver | null = null;
 
   constructor() {
     window.addEventListener("keydown", e => {
-      // Movement keys always work — the player should be able to
-      // navigate the world even while an inventory / build panel
-      // is open.  All other keys (Space gather, build shortcuts,
-      // etc.) remain gated by the panel check below.
       if (MOVEMENT_KEYS.has(e.key)) {
         this.keys.add(e.key);
         return;
       }
-
-      // Non-movement keys are consumed by open panels.
+      // Space triggers harvest regardless of open panels (same as LMB)
+      if (e.key === " ") {
+        e.preventDefault();
+        this.keys.add(e.key);
+        if (!sm.state.player.harvestProgress) this.tryStartHarvest();
+        return;
+      }
       if (panelManager.isAnyPanelOpen()) return;
-
       this.keys.add(e.key);
-      if (e.key === " ") e.preventDefault();
     });
 
     window.addEventListener("keyup", e => this.keys.delete(e.key));
 
     window.addEventListener("mousedown", e => {
-      if (e.button === 0 && (e.target as HTMLElement).tagName === "CANVAS") this.tryGather();
+      if (e.button === 0 && (e.target as HTMLElement).tagName === "CANVAS") {
+        this.mouseHeld = true;
+        this.tryStartHarvest();
+      }
     });
-    
+
+    window.addEventListener("mouseup", e => {
+      if (e.button === 0) {
+        this.mouseHeld = false;
+        // Cancel any in-progress harvest
+        sm.state.player.harvestProgress = null;
+      }
+    });
   }
 
-  /** Wire up any object that can show gather feedback. */
   setFeedbackUI(ui: GatherFeedbackReceiver): void {
     this.feedbackUI = ui;
   }
 
   update(deltaMs: number): void {
     this.updateMovement(deltaMs);
-    this.updateGather(deltaMs);
+    this.updateHarvest(deltaMs);
   }
 
   // ── Movement ─────────────────────────────────────────────
@@ -105,60 +110,120 @@ export class PlayerSystem {
     sm.movePlayer(x + dx * spd * dt, y + dy * spd * dt);
   }
 
-  // ── Gather ───────────────────────────────────────────────
+  // ── Harvest ───────────────────────────────────────────────
 
-  private updateGather(deltaMs: number): void {
-    if (this.gatherCooldownMs > 0) {
-      this.gatherCooldownMs -= deltaMs;
+  private updateHarvest(deltaMs: number): void {
+    const isActionHeld = this.mouseHeld || this.keys.has(" ");
+
+    // Cancel if action released or wrong cursor mode
+    if (!isActionHeld || sm.state.player.cursorMode !== CursorMode.None) {
+      sm.state.player.harvestProgress = null;
+      return;
     }
-    if (this.keys.has(" ") && this.gatherCooldownMs <= 0) {
-      this.tryGather();
+
+    // Space bar start — mousedown already handles LMB start
+    if (this.keys.has(" ") && !sm.state.player.harvestProgress) {
+      this.tryStartHarvest();
+      return;
+    }
+
+    const prog = sm.state.player.harvestProgress;
+    if (!prog) return;
+
+    // Cancel if the player has drifted off the harvest tile
+    const { tx, ty } = this.getTileUnderPlayer();
+    if (tx !== prog.tx || ty !== prog.ty) {
+      sm.state.player.harvestProgress = null;
+      return;
+    }
+
+    // Cancel if the feature has disappeared (extractor beat us to it)
+    const fi = this.getFeatureAt(prog.tx, prog.ty);
+    if (!fi) {
+      sm.state.player.harvestProgress = null;
+      return;
+    }
+
+    prog.elapsedMs += deltaMs;
+
+    if (prog.elapsedMs >= prog.totalMs) {
+      this.completeHarvest(prog.tx, prog.ty);
+      sm.state.player.harvestProgress = null;
+
+      // Still holding — restart on the same tile if the feature still exists
+      if (isActionHeld) {
+        this.tryStartHarvest();
+      }
     }
   }
 
-  private tryGather(): void {
-    if (this.gatherCooldownMs > 0) return;
-
+  private tryStartHarvest(): void {
     if (sm.state.player.cursorMode !== CursorMode.None) return;
 
-    const tile = this.getTileUnderPlayer();
-    if (!tile) return;
+    const { tx, ty } = this.getTileUnderPlayer();
+    const fi = this.getFeatureAt(tx, ty);
+    if (!fi) return;
 
-    const itemId = TILE_TO_ITEM[tile.type];
-    if (!itemId) return;
+    const featureDef = registry.findFeature(fi.featureState.featureId);
+    if (!featureDef) return;
 
-    const overflow = sm.givePlayerItem(itemId, 1);
+    const totalMs = featureDef.harvestTimeMs ?? DEFAULT_HARVEST_MS;
+    sm.state.player.harvestProgress = { tx, ty, elapsedMs: 0, totalMs };
+  }
+
+  private completeHarvest(tx: number, ty: number): void {
+    const fi = this.getFeatureAt(tx, ty);
+    if (!fi) return;
+
+    const featureDef = registry.findFeature(fi.featureState.featureId);
+    if (!featureDef) return;
+
+    const overflow = sm.givePlayerItem(featureDef.yieldsItemId, 1);
     if (overflow > 0) {
       bus.emit("ui:notification", { message: "Inventory full!", severity: "warn" });
     } else {
-      // inventory:changed is now emitted inside givePlayerItem(); the
-      // feedback toast is still shown here for the gather animation.
-      const itemName = itemId.replace(/_/g, " ");
+      const itemName = featureDef.yieldsItemId.replace(/_/g, " ");
       this.feedbackUI?.showGatherFeedback(itemName, 1);
     }
 
-    this.gatherCooldownMs = GATHER_COOLDOWN_MS;
+    // Deplete the node
+    if (GameConfig.RESOURCE_DEPLETION_ENABLED && !featureDef.infinite) {
+      fi.featureState.remainingYield -= 1;
+      if (fi.featureState.remainingYield <= 0) {
+        delete fi.chunk.features![fi.localKey];
+      }
+    }
   }
 
-  // ── Tile lookup ───────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────
 
-  private getTileUnderPlayer() {
+  private getTileUnderPlayer(): { tx: number; ty: number } {
     const T  = GameConfig.TILE_SIZE;
-    const CS = GameConfig.CHUNK_SIZE;
-
     const { x, y } = sm.state.player.pos;
-    const tx = Math.floor(x / T);
-    const ty = Math.floor(y / T);
+    return {
+      tx: Math.floor(x / T),
+      ty: Math.floor(y / T),
+    };
+  }
+
+  private getFeatureAt(tx: number, ty: number): {
+    chunk:        Chunk;
+    localKey:     string;
+    featureState: FeatureState;
+  } | null {
+    const CS = GameConfig.CHUNK_SIZE;
     const cx = Math.floor(tx / CS);
     const cy = Math.floor(ty / CS);
-
     const chunk = sm.getChunk(cx, cy);
-    if (!chunk) return null;
+    if (!chunk?.features) return null;
 
-    const lx = ((tx % CS) + CS) % CS;
-    const ly = ((ty % CS) + CS) % CS;
+    const lx  = ((tx % CS) + CS) % CS;
+    const ly  = ((ty % CS) + CS) % CS;
+    const key = `${lx},${ly}`;
+    const fs  = chunk.features[key];
+    if (!fs) return null;
 
-    return chunk.tiles[ly]?.[lx] ?? null;
+    return { chunk, localKey: key, featureState: fs };
   }
 
   destroy(): void {}

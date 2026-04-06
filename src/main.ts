@@ -84,6 +84,7 @@ async function main() {
   actionBarUI.setInventoryPanel(inventoryUI);
   actionBarUI.setBuildPanel(buildUI);
   actionBarUI.setSystemPanel(systemMenuUI);
+  actionBarUI.setPowerPanel(powerUI);
   playerSystem.setFeedbackUI(inventoryUI);
 
   // ── 5. State ───────────────────────────────────────────────

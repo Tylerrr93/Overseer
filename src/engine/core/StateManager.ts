@@ -26,6 +26,7 @@ function defaultState(): GameState {
       health:            100,
       maxHealth:         100,
       cursorMode:        CursorMode.None,
+      harvestProgress:   null,
     },
     chunks:  {},
     doodads: {},
@@ -253,9 +254,11 @@ export class StateManager {
     if (p.placementRotation === undefined) p.placementRotation = 0;
     if (!this.state.belts)                (this.state as GameState).belts = {};
 
-    // Always reset cursor mode on load — no point restoring mid-session UI state
-    p.cursorMode = CursorMode.None;
-    p.heldItemId = null;
+    // Always reset transient input state on load
+    p.cursorMode       = CursorMode.None;
+    p.heldItemId       = null;
+    p.harvestProgress  = null;
+    if (p.harvestProgress === undefined) p.harvestProgress = null;
 
     // Migrate doodad instances
     for (const d of Object.values(this.state.doodads)) {
