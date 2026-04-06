@@ -28,9 +28,20 @@ import { ChestUI }                  from "@game/ui/ChestUI";
 import { DoodadUI }                 from "@game/ui/DoodadUI";
 import { PowerUI }                  from "@game/ui/PowerUI";
 import { ActionBarUI }              from "@game/ui/ActionBarUI";
-import { SystemMenuUI }            from "@game/ui/SystemMenuUI";
+import { SystemMenuUI }             from "@game/ui/SystemMenuUI";
+import { UIStyleManager }           from "@game/ui/UIStyleManager";
 
 async function main() {
+  // ── 0. UI Scale — apply before any panel is created ────────
+  //  Reads the persisted scale from localStorage and sets
+  //  --ui-scale on :root so every subsequent calc() in every
+  //  injected stylesheet sees the correct multiplier immediately.
+  {
+    const raw = localStorage.getItem(GameConfig.UI_SCALE_KEY);
+    const scale = raw !== null ? parseFloat(raw) : GameConfig.UI_SCALE_DEFAULT;
+    UIStyleManager.applyScale(scale);
+  }
+
   // ── 1. Content ─────────────────────────────────────────────
   bootstrapContent();
 

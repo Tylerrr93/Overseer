@@ -27,7 +27,7 @@ const STYLES = `
 #build-ui {
   background: var(--col-bg);
   box-shadow: var(--panel-shadow-purple);
-  max-width: 560px;
+  max-width: calc(560px * var(--ui-scale));
 
   /* Override shared cascade hooks for the purple theme */
   --panel-border-color: var(--col-purple-border);
@@ -37,18 +37,18 @@ const STYLES = `
 #build-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: var(--gap-md);
 }
 
 .build-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--col-purple-border);
-  border-radius: 3px;
-  padding: 8px 6px 6px;
+  border-radius: calc(3px * var(--ui-scale));
+  padding: var(--gap-lg) var(--gap-md) var(--gap-md);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--gap-sm);
   cursor: pointer;
   transition: border-color 0.1s, background 0.1s;
 }
@@ -64,9 +64,9 @@ const STYLES = `
 }
 
 .build-card .bc-sprite {
-  width: 36px;
-  height: 36px;
-  border-radius: 3px;
+  width: var(--bc-sprite-size);
+  height: var(--bc-sprite-size);
+  border-radius: calc(3px * var(--ui-scale));
   flex-shrink: 0;
   pointer-events: none;
 }
@@ -89,13 +89,13 @@ const STYLES = `
 /*  interaction hints at the bottom.                              */
 #build-mode-hud {
   position: fixed;
-  top: 12px;
+  top: calc(12px * var(--ui-scale));
   left: 50%;
   transform: translateX(-50%);
   background: rgba(16, 8, 24, 0.92);
   border: 1px solid #4a2a7a;
-  border-radius: 3px;
-  padding: 6px 18px;
+  border-radius: calc(3px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(18px * var(--ui-scale));
   font-family: monospace;
   font-size: var(--font-sm);
   letter-spacing: 0.12em;
@@ -117,12 +117,12 @@ const STYLES = `
   z-index: 99;
   background: rgba(10, 6, 18, 0.94);
   border: 1px solid #3a1a5a;
-  border-radius: 3px;
-  padding: 6px 10px;
+  border-radius: calc(3px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-family: monospace;
   font-size: var(--font-xs);
   letter-spacing: 0.08em;
-  min-width: 130px;
+  min-width: calc(130px * var(--ui-scale));
 }
 #build-cost-tooltip.visible { display: block; }
 
@@ -131,14 +131,14 @@ const STYLES = `
   font-size: var(--font-xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  margin-bottom: 5px;
+  margin-bottom: calc(5px * var(--ui-scale));
 }
 
 .bct-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 10px;
+  gap: calc(10px * var(--ui-scale));
   line-height: 1.7;
 }
 
@@ -352,7 +352,7 @@ export class BuildUI extends UIPanel {
         background:#3a1a0a;
         border:1px dashed #7a3a1a;
         display:flex;align-items:center;justify-content:center;
-        font-size:20px;">⛏</div>
+        font-size:var(--font-lg);">⛏</div>
       <div class="bc-name">Deconstruct</div>
       <div class="bc-size">Hold LMB</div>
     `;

@@ -31,15 +31,15 @@ const STYLES = `
 #inventory-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
+  gap: var(--gap-sm);
 }
 
 .inv-slot {
-  width: 52px;
-  height: 52px;
+  width: var(--slot-size);
+  height: var(--slot-size);
   background: var(--col-slot-bg);
   border: 1px solid var(--col-slot-border);
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -62,18 +62,18 @@ const STYLES = `
 }
 
 .inv-slot .sprite {
-  width: 24px;
-  height: 24px;
-  border-radius: 2px;
-  margin-bottom: 2px;
+  width: var(--sprite-size-lg);
+  height: var(--sprite-size-lg);
+  border-radius: calc(2px * var(--ui-scale));
+  margin-bottom: var(--gap-xs);
   flex-shrink: 0;
   pointer-events: none;
 }
 
 .inv-slot .item-qty {
   position: absolute;
-  bottom: 3px;
-  right: 5px;
+  bottom: calc(3px * var(--ui-scale));
+  right: calc(5px * var(--ui-scale));
   font-size: var(--font-sm);
   color: #a0c8d0;
   line-height: 1;
@@ -85,11 +85,11 @@ const STYLES = `
   color: #4a8a9a;
   text-align: center;
   line-height: 1.2;
-  max-width: 48px;
+  max-width: calc(48px * var(--ui-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 2px;
+  padding: 0 var(--gap-xs);
   pointer-events: none;
 }
 
@@ -102,13 +102,13 @@ const STYLES = `
 /* ── Floating gather toasts ─────────────────────────────────── */
 #gather-toast-container {
   position: fixed;
-  bottom: 124px;
+  bottom: calc(124px * var(--ui-scale));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column-reverse; /* newest at bottom, older rise */
   align-items: center;
-  gap: 4px;
+  gap: var(--gap-sm);
   pointer-events: none;
   z-index: 99;
 }
@@ -120,8 +120,8 @@ const STYLES = `
   font-family: monospace;
   font-size: var(--font-md);
   letter-spacing: 0.15em;
-  padding: 5px 14px;
-  border-radius: 3px;
+  padding: calc(5px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border-radius: calc(3px * var(--ui-scale));
   white-space: nowrap;
   opacity: 0;
   transform: translateY(12px);

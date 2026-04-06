@@ -22,8 +22,6 @@ import type { IPowerSystem } from "@engine/rendering/Renderer";
 
 const STYLES = `
 #power-ui {
-  min-width: 260px;
-  max-width: 320px;
   font-family: monospace;
   color: #a0b8d8;
   box-shadow: 0 0 32px rgba(0, 160, 255, 0.06);
@@ -31,12 +29,12 @@ const STYLES = `
 }
 
 #power-ui-title {
-  font-size: 10px;
+  font-size: var(--font-md);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #00e5ff;
-  margin-bottom: 10px;
-  padding-bottom: 7px;
+  margin-bottom: var(--gap-xl);
+  padding-bottom: calc(7px * var(--ui-scale));
   border-bottom: 1px solid #1a2a3a;
   display: flex;
   justify-content: space-between;
@@ -46,40 +44,40 @@ const STYLES = `
 }
 #power-ui-title:active { cursor: grabbing; }
 #power-ui-title span {
-  font-size: 8px;
+  font-size: var(--font-2xs);
   color: #2a4a6a;
   letter-spacing: 0.1em;
 }
 
 .pnet {
-  margin-bottom: 10px;
-  padding-bottom: 10px;
+  margin-bottom: var(--gap-xl);
+  padding-bottom: var(--gap-xl);
   border-bottom: 1px solid #0e1a2a;
 }
 .pnet:last-child { margin-bottom: 0; border-bottom: none; }
 
 .pnet-header {
-  font-size: 9px;
+  font-size: var(--font-sm);
   letter-spacing: 0.12em;
   color: #4a7aaa;
-  margin-bottom: 6px;
+  margin-bottom: var(--gap-md);
   text-transform: uppercase;
 }
 
 /* Supply/demand bar */
 .pbar-wrap {
   position: relative;
-  height: 10px;
+  height: var(--pbar-height);
   background: rgba(255,255,255,0.04);
-  border-radius: 2px;
+  border-radius: calc(2px * var(--ui-scale));
   overflow: hidden;
-  margin-bottom: 4px;
+  margin-bottom: var(--gap-sm);
 }
 .pbar-supply {
   position: absolute;
   left: 0; top: 0; bottom: 0;
   background: #1a7a3a;
-  border-radius: 2px;
+  border-radius: calc(2px * var(--ui-scale));
   transition: width 0.2s;
 }
 .pbar-demand {
@@ -94,8 +92,8 @@ const STYLES = `
 .pnet-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2px 8px;
-  font-size: 8px;
+  gap: var(--gap-xs) var(--gap-lg);
+  font-size: var(--font-2xs);
 }
 .pnet-stat-label { color: #2a4a6a; }
 .pnet-stat-value { color: #80b0d8; text-align: right; }
@@ -106,12 +104,12 @@ const STYLES = `
 /* Unconnected machines warning */
 #power-unconnected {
   display: none;
-  margin-top: 8px;
-  padding: 5px 8px;
+  margin-top: var(--gap-lg);
+  padding: calc(5px * var(--ui-scale)) var(--gap-lg);
   background: rgba(200, 60, 0, 0.12);
   border: 1px solid rgba(200,60,0,0.3);
-  border-radius: 2px;
-  font-size: 8px;
+  border-radius: calc(2px * var(--ui-scale));
+  font-size: var(--font-2xs);
   color: #d06030;
   letter-spacing: 0.08em;
 }
@@ -120,11 +118,11 @@ const STYLES = `
 /* No grid message */
 #power-nogrid {
   display: none;
-  font-size: 8px;
+  font-size: var(--font-2xs);
   color: #2a3a5a;
   letter-spacing: 0.1em;
   text-align: center;
-  padding: 8px 0;
+  padding: var(--gap-lg) 0;
 }
 #power-nogrid.visible { display: block; }
 `;
@@ -159,8 +157,8 @@ export class PowerUI extends UIPanel {
     // Apply theme colours that UIPanel doesn't set
     this.el.style.background  = "rgba(6, 10, 18, 0.94)";
     this.el.style.border      = "1px solid #1a2a4a";
-    this.el.style.borderRadius = "4px";
-    this.el.style.padding     = "12px 14px";
+    this.el.style.borderRadius = "var(--panel-radius)";
+    this.el.style.padding     = "var(--panel-padding-sm) var(--panel-padding-md)";
 
     this.el.innerHTML = `
       <div id="power-ui-title">

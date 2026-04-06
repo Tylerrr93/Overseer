@@ -94,8 +94,11 @@ export abstract class UIPanel {
     this.el.style.left      = "50%";
     this.el.style.transform = "translate(-50%, -50%)";
     this.el.style.zIndex    = String(panelManager.getBaseZ());
-    this.el.style.minWidth  = `${opts.minWidth  ?? 280}px`;
-    this.el.style.minHeight = `${opts.minHeight ?? 80}px`;
+    // Use calc() so min-dimensions scale with --ui-scale automatically.
+    const mw = opts.minWidth  ?? 280;
+    const mh = opts.minHeight ?? 80;
+    this.el.style.minWidth  = `calc(${mw}px * var(--ui-scale))`;
+    this.el.style.minHeight = `calc(${mh}px * var(--ui-scale))`;
     this.el.style.overflow  = "auto";   // required for resize: both
     if (opts.resizable !== false) {
       this.el.style.resize = "both";

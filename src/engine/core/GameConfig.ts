@@ -26,4 +26,10 @@ export const GameConfig = Object.freeze({
   SAVE_TS_KEY:           "digitized_overseer_save_ts",   // unix-ms timestamp of last save
   SAVE_VERSION:          2,   // bumped: fuel slot added to iron_extractor
   AUTOSAVE_INTERVAL_MS:  60_000,
+
+  // UI
+  UI_SCALE_KEY:          "digitized_overseer_ui_scale",
+  UI_SCALE_MIN:          0.6,
+  UI_SCALE_MAX:          1.6,
+  UI_SCALE_DEFAULT:      1.0,
 });

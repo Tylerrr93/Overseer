@@ -10,11 +10,14 @@
 //    • Export JSON  — downloads the current state as a .json file
 //    • Import JSON  — file picker, validates, then page reload
 //    • Last-saved timestamp shown and refreshed on open
+//    • UI Scale slider — 0.6×–1.6×, persisted to localStorage,
+//                        applied instantly via --ui-scale on :root
 //
 //  Extends UIPanel — inherits drag-to-move, resize, z-stacking.
 // ============================================================
 
 import { UIPanel }         from "./UIPanel";
+import { UIStyleManager }  from "./UIStyleManager";
 import { sm }              from "@engine/core/StateManager";
 import { GameConfig }      from "@engine/core/GameConfig";
 import {
@@ -31,17 +34,17 @@ const STYLES = `
   background: var(--col-bg);
   box-shadow: var(--panel-shadow-cyan);
   font-family: monospace;
-  min-width: 260px;
-  max-width: 320px;
+  min-width: calc(260px * var(--ui-scale));
+  max-width: calc(320px * var(--ui-scale));
 }
 
 #system-menu-header {
-  font-size: 10px;
+  font-size: var(--font-md);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #00e5ff;
-  padding-bottom: 8px;
-  margin-bottom: 12px;
+  padding-bottom: var(--gap-lg);
+  margin-bottom: var(--gap-xl);
   border-bottom: 1px solid #1a2a3a;
   display: flex;
   justify-content: space-between;
@@ -51,38 +54,38 @@ const STYLES = `
 }
 #system-menu-header:active { cursor: grabbing; }
 #system-menu-header span {
-  font-size: 8px;
+  font-size: var(--font-2xs);
   color: #2a4a6a;
   letter-spacing: 0.1em;
 }
 
 /* ── Sections ──────────────────────────────────────────── */
 .sm-section {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  margin-bottom: var(--gap-xl);
+  padding-bottom: var(--gap-xl);
   border-bottom: 1px solid #0e1a2a;
 }
 .sm-section:last-child { margin-bottom: 0; border-bottom: none; }
 
 .sm-section-label {
-  font-size: 8px;
+  font-size: var(--font-2xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #2a4a6a;
-  margin-bottom: 6px;
+  margin-bottom: var(--gap-md);
 }
 
 /* ── Buttons ───────────────────────────────────────────── */
 .sm-btn {
   width: 100%;
-  padding: 7px 10px;
-  margin-bottom: 5px;
+  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  margin-bottom: calc(5px * var(--ui-scale));
   background: rgba(255,255,255,0.03);
   border: 1px solid #1a3a4a;
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   color: #80b0c8;
   font-family: monospace;
-  font-size: 9px;
+  font-size: var(--font-sm);
   letter-spacing: 0.1em;
   text-align: left;
   cursor: pointer;
@@ -132,14 +135,60 @@ const STYLES = `
   color: #40b0d0;
 }
 
+/* ── Scale control ─────────────────────────────────────── */
+.sm-scale-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-lg);
+  margin-top: calc(4px * var(--ui-scale));
+}
+
+#sm-scale-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: calc(4px * var(--ui-scale));
+  border-radius: calc(2px * var(--ui-scale));
+  background: #1a2a3a;
+  outline: none;
+  cursor: pointer;
+}
+#sm-scale-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  border-radius: 50%;
+  background: #00e5ff;
+  cursor: pointer;
+  border: none;
+}
+#sm-scale-slider::-moz-range-thumb {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  border-radius: 50%;
+  background: #00e5ff;
+  cursor: pointer;
+  border: none;
+}
+
+#sm-scale-label {
+  font-size: var(--font-sm);
+  color: #60a0c0;
+  letter-spacing: 0.08em;
+  min-width: calc(32px * var(--ui-scale));
+  text-align: right;
+  flex-shrink: 0;
+}
+
 /* ── Status line ───────────────────────────────────────── */
 #sm-status {
-  margin-top: 10px;
-  padding: 5px 8px;
-  border-radius: 3px;
-  font-size: 8px;
+  margin-top: var(--gap-xl);
+  padding: calc(5px * var(--ui-scale)) var(--gap-lg);
+  border-radius: calc(3px * var(--ui-scale));
+  font-size: var(--font-2xs);
   letter-spacing: 0.08em;
-  min-height: 22px;
+  min-height: calc(22px * var(--ui-scale));
   display: none;
 }
 #sm-status.ok {
@@ -163,17 +212,17 @@ const STYLES = `
 
 /* ── Last saved ────────────────────────────────────────── */
 #sm-last-saved {
-  font-size: 8px;
+  font-size: var(--font-2xs);
   color: #2a4a6a;
   letter-spacing: 0.08em;
-  margin-top: 2px;
+  margin-top: calc(2px * var(--ui-scale));
 }
 #sm-last-saved.has-save { color: #40c060; }
 
 /* ── Version footer ────────────────────────────────────── */
 #sm-footer {
-  margin-top: 10px;
-  font-size: 7px;
+  margin-top: var(--gap-xl);
+  font-size: var(--font-xs);
   color: #1a3040;
   letter-spacing: 0.1em;
   text-align: right;
@@ -195,6 +244,8 @@ export class SystemMenuUI extends UIPanel {
   private statusEl!:    HTMLElement;
   private wipeBtn!:     HTMLButtonElement;
   private loadBtn!:     HTMLButtonElement;
+  private scaleSlider!: HTMLInputElement;
+  private scaleLabel!:  HTMLElement;
   private _confirmingWipe = false;
   private _statusTimer:   ReturnType<typeof setTimeout> | null = null;
 
@@ -211,8 +262,8 @@ export class SystemMenuUI extends UIPanel {
 
     this.el.style.background   = "rgba(6, 10, 18, 0.96)";
     this.el.style.border       = "1px solid #1a2a4a";
-    this.el.style.borderRadius = "4px";
-    this.el.style.padding      = "12px 14px";
+    this.el.style.borderRadius = "var(--panel-radius)";
+    this.el.style.padding      = "var(--panel-padding-sm) var(--panel-padding-md)";
     this.el.style.color        = "#a0b8d8";
 
     this._buildHTML();
@@ -225,6 +276,13 @@ export class SystemMenuUI extends UIPanel {
     this._resetConfirmWipe();
     this._refreshLastSaved();
     this._clearStatus();
+    // Sync slider to current scale in case it changed externally
+    const current = parseFloat(
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--ui-scale").trim() || "1"
+    );
+    this.scaleSlider.value = String(current);
+    this.scaleLabel.textContent = `${current.toFixed(2)}×`;
   }
 
   protected override onClose(): void {
@@ -234,10 +292,31 @@ export class SystemMenuUI extends UIPanel {
   // ── DOM construction ──────────────────────────────────────
 
   private _buildHTML(): void {
+    const savedScale = parseFloat(
+      localStorage.getItem(GameConfig.UI_SCALE_KEY) ?? String(GameConfig.UI_SCALE_DEFAULT)
+    );
+    const clampedScale = Math.min(GameConfig.UI_SCALE_MAX, Math.max(GameConfig.UI_SCALE_MIN, savedScale));
+
     this.el.innerHTML = `
       <div id="system-menu-header">
         ⚙ System
         <span>ESC — CLOSE</span>
+      </div>
+
+      <!-- UI Scale -->
+      <div class="sm-section">
+        <div class="sm-section-label">Display Scale</div>
+        <div class="sm-scale-row">
+          <input
+            id="sm-scale-slider"
+            type="range"
+            min="${GameConfig.UI_SCALE_MIN}"
+            max="${GameConfig.UI_SCALE_MAX}"
+            step="0.05"
+            value="${clampedScale}"
+          />
+          <span id="sm-scale-label">${clampedScale.toFixed(2)}×</span>
+        </div>
       </div>
 
       <!-- Save / Load / Wipe -->
@@ -245,15 +324,15 @@ export class SystemMenuUI extends UIPanel {
         <div class="sm-section-label">Save &amp; Load</div>
         <button class="sm-btn" id="sm-save-btn">💾  Save Game</button>
         <div id="sm-last-saved">No save found.</div>
-        <button class="sm-btn" id="sm-load-btn" style="margin-top:6px">↺  Load Last Save</button>
-        <button class="sm-btn danger" id="sm-wipe-btn" style="margin-top:6px">✕  Wipe All Save Data</button>
+        <button class="sm-btn" id="sm-load-btn" style="margin-top:var(--gap-md)">↺  Load Last Save</button>
+        <button class="sm-btn danger" id="sm-wipe-btn" style="margin-top:var(--gap-md)">✕  Wipe All Save Data</button>
       </div>
 
       <!-- Export / Import -->
       <div class="sm-section">
         <div class="sm-section-label">Import / Export</div>
         <button class="sm-btn io" id="sm-export-btn">↓  Export Save File (.json)</button>
-        <button class="sm-btn io" id="sm-import-btn" style="margin-top:5px">↑  Import Save File (.json)</button>
+        <button class="sm-btn io" id="sm-import-btn" style="margin-top:var(--gap-sm)">↑  Import Save File (.json)</button>
       </div>
 
       <!-- Status feedback -->
@@ -265,10 +344,12 @@ export class SystemMenuUI extends UIPanel {
 
     this.bindDragHandle(this.el.querySelector("#system-menu-header") as HTMLElement);
 
-    this.lastSavedEl = this.el.querySelector("#sm-last-saved")!;
-    this.statusEl    = this.el.querySelector("#sm-status")!;
-    this.wipeBtn     = this.el.querySelector("#sm-wipe-btn")!;
-    this.loadBtn     = this.el.querySelector("#sm-load-btn")!;
+    this.lastSavedEl  = this.el.querySelector("#sm-last-saved")!;
+    this.statusEl     = this.el.querySelector("#sm-status")!;
+    this.wipeBtn      = this.el.querySelector("#sm-wipe-btn")!;
+    this.loadBtn      = this.el.querySelector("#sm-load-btn")!;
+    this.scaleSlider  = this.el.querySelector("#sm-scale-slider")!;
+    this.scaleLabel   = this.el.querySelector("#sm-scale-label")!;
   }
 
   private _bindEvents(): void {
@@ -286,6 +367,17 @@ export class SystemMenuUI extends UIPanel {
 
     this.el.querySelector("#sm-import-btn")!
       .addEventListener("click", () => this._handleImport());
+
+    // Scale slider — live preview + persist on release
+    this.scaleSlider.addEventListener("input", () => {
+      const v = parseFloat(this.scaleSlider.value);
+      this.scaleLabel.textContent = `${v.toFixed(2)}×`;
+      UIStyleManager.applyScale(v);
+    });
+    this.scaleSlider.addEventListener("change", () => {
+      const v = parseFloat(this.scaleSlider.value);
+      localStorage.setItem(GameConfig.UI_SCALE_KEY, String(v));
+    });
 
     // Escape key closes the panel
     window.addEventListener("keydown", e => {

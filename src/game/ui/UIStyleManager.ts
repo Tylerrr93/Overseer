@@ -6,6 +6,10 @@
 //    • Shared structural styles for .ui-panel, .ui-panel-header,
 //      and .ui-panel-footer
 //
+//  All sizing tokens are defined as calc() expressions against
+//  --ui-scale so that changing that one variable instantly
+//  reflows every panel, slot, button, and font across the UI.
+//
 //  Panels override the two "cascade hook" variables on their own
 //  root element to theme borders and accent colour without
 //  touching shared rules:
@@ -33,11 +37,60 @@ export class UIStyleManager {
       :root {
         --ui-scale: 1;
 
+        /* Fonts */
         --font-xs:   calc(7px  * var(--ui-scale));
         --font-2xs:  calc(8px  * var(--ui-scale));
         --font-sm:   calc(9px  * var(--ui-scale));
         --font-md:   calc(11px * var(--ui-scale));
         --font-lg:   calc(13px * var(--ui-scale));
+
+        /* ── Slot / sprite sizes ───────────────────────────── */
+        /*  inv-slot  (InventoryUI)  */
+        --slot-size:         calc(52px * var(--ui-scale));
+        --sprite-size-lg:    calc(24px * var(--ui-scale));
+
+        /*  ab-slot   (ActionBarUI) */
+        --ab-slot-size:      calc(54px * var(--ui-scale));
+        --ab-sprite-size:    calc(28px * var(--ui-scale));
+        --ab-key-font:       calc(8px  * var(--ui-scale));
+        --ab-name-font:      calc(6px  * var(--ui-scale));
+        --ab-empty-font:     calc(10px * var(--ui-scale));
+        --ab-icon-btn-size:  calc(54px * var(--ui-scale));
+        --ab-ui-btn-height:  calc(25px * var(--ui-scale));
+        --ab-ui-btn-width:   calc(36px * var(--ui-scale));
+        --ab-icon-btn-width: calc(36px * var(--ui-scale));
+        --ab-icon-font:      calc(18px * var(--ui-scale));
+        --ab-ui-font:        calc(14px * var(--ui-scale));
+
+        /*  build-card (BuildUI) */
+        --bc-sprite-size:    calc(36px * var(--ui-scale));
+
+        /*  cs-slot   (ChestUI) */
+        --cs-slot-size:      calc(44px * var(--ui-scale));
+        --cs-sprite-size:    calc(20px * var(--ui-scale));
+
+        /*  dd-slot   (DoodadUI) */
+        --dd-slot-size:      calc(46px * var(--ui-scale));
+        --dd-sprite-size:    calc(22px * var(--ui-scale));
+
+        /* ── Spacing ───────────────────────────────────────── */
+        --gap-xs:    calc(2px  * var(--ui-scale));
+        --gap-sm:    calc(4px  * var(--ui-scale));
+        --gap-md:    calc(6px  * var(--ui-scale));
+        --gap-lg:    calc(8px  * var(--ui-scale));
+        --gap-xl:    calc(12px * var(--ui-scale));
+        --gap-2xl:   calc(16px * var(--ui-scale));
+
+        /* ── Panel chrome ──────────────────────────────────── */
+        --panel-radius:        calc(4px  * var(--ui-scale));
+        --panel-padding:       calc(16px * var(--ui-scale));
+        --panel-padding-sm:    calc(12px * var(--ui-scale));
+        --panel-padding-md:    calc(14px * var(--ui-scale));
+        --panel-shadow-cyan:   0 0 40px rgba(0, 229, 255, 0.08);
+        --panel-shadow-purple: 0 0 40px rgba(180, 100, 255, 0.07);
+
+        /* ── Power bar ─────────────────────────────────────── */
+        --pbar-height: calc(10px * var(--ui-scale));
 
         /* ── Global palette ────────────────────────────────── */
         --col-bg:           rgba(8, 12, 16, 0.97);
@@ -64,12 +117,6 @@ export class UIStyleManager {
         /*  without touching the shared ruleset below.          */
         --panel-accent-color: var(--col-accent);
         --panel-border-color: var(--col-border);
-
-        /* ── Panel chrome constants ────────────────────────── */
-        --panel-radius:        4px;
-        --panel-padding:       16px;
-        --panel-shadow-cyan:   0 0 40px rgba(0, 229, 255, 0.08);
-        --panel-shadow-purple: 0 0 40px rgba(180, 100, 255, 0.07);
       }
 
       /* ── Base panel shell ───────────────────────────────── */
@@ -91,8 +138,8 @@ export class UIStyleManager {
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        padding-bottom: 8px;
-        margin-bottom: 12px;
+        padding-bottom: var(--gap-lg);
+        margin-bottom: var(--gap-xl);
         border-bottom: 1px solid var(--panel-border-color);
         cursor: grab;
       }
@@ -116,8 +163,8 @@ export class UIStyleManager {
 
       /* ── Footer ─────────────────────────────────────────── */
       .ui-panel-footer {
-        margin-top: 10px;
-        padding-top: 8px;
+        margin-top: var(--gap-xl);
+        padding-top: var(--gap-lg);
         border-top: 1px solid var(--panel-border-color);
         font-size: var(--font-xs);
         color: var(--col-text-mute);
@@ -126,5 +173,15 @@ export class UIStyleManager {
       }
     `;
     document.head.appendChild(style);
+  }
+
+  /**
+   * Apply a UI scale value.  Clamps to [0.6, 1.6].
+   * This is the single call site that updates --ui-scale;
+   * every calc() expression across all panels reflows automatically.
+   */
+  static applyScale(scale: number): void {
+    const clamped = Math.min(1.6, Math.max(0.6, scale));
+    document.documentElement.style.setProperty("--ui-scale", String(clamped));
   }
 }

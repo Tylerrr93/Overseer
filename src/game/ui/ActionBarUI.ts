@@ -39,25 +39,25 @@ const DEFAULT_LOADOUT: (string | null)[] = [
 const STYLES = `
 #action-bar {
   position: fixed;
-  bottom: 16px;
+  bottom: calc(16px * var(--ui-scale));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 4px;
+  gap: var(--gap-sm);
   background: rgba(6, 10, 14, 0.92);
   border: 1px solid #1e3a4a;
-  border-radius: 4px;
-  padding: 6px;
+  border-radius: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale));
   z-index: 90;
   user-select: none;
 }
 
 .ab-slot {
-  width: 54px;
-  height: 54px;
+  width: var(--ab-slot-size);
+  height: var(--ab-slot-size);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid #1a2a3a;
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -96,10 +96,10 @@ const STYLES = `
 
 .ab-key {
   position: absolute;
-  top: 3px;
-  left: 5px;
+  top: calc(3px * var(--ui-scale));
+  left: calc(5px * var(--ui-scale));
   font-family: monospace;
-  font-size: 8px;
+  font-size: var(--ab-key-font);
   color: #2a5a6a;
   line-height: 1;
   pointer-events: none;
@@ -108,19 +108,19 @@ const STYLES = `
 .ab-slot.ab-deconstruct.active .ab-key { color: #ff7755; }
 
 .ab-sprite {
-  width: 28px;
-  height: 28px;
-  border-radius: 2px;
+  width: var(--ab-sprite-size);
+  height: var(--ab-sprite-size);
+  border-radius: calc(2px * var(--ui-scale));
   flex-shrink: 0;
-  margin-bottom: 2px;
+  margin-bottom: var(--gap-xs);
 }
 
 .ab-name {
   font-family: monospace;
-  font-size: 6px;
+  font-size: var(--ab-name-font);
   color: #3a6a7a;
   text-align: center;
-  max-width: 50px;
+  max-width: calc(50px * var(--ui-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -133,7 +133,7 @@ const STYLES = `
 
 .ab-empty {
   font-family: monospace;
-  font-size: 10px;
+  font-size: var(--ab-empty-font);
   color: #1a2a3a;
   pointer-events: none;
 }
@@ -142,20 +142,20 @@ const STYLES = `
 .ab-ui-btns {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-left: 4px;
+  gap: var(--gap-sm);
+  margin-left: var(--gap-sm);
   flex-shrink: 0;
 }
 
 .ab-ui-btn {
-  width: 36px;
-  /* 2 × 25px + 4px gap = 54px — matches slot height exactly */
-  height: 25px;
+  width: var(--ab-ui-btn-width);
+  /* 2 × height + gap = ab-slot-size — matches slot height exactly */
+  height: var(--ab-ui-btn-height);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid #1a2a3a;
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   color: #3a6a7a;
-  font-size: 14px;
+  font-size: var(--ab-ui-font);
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -178,13 +178,13 @@ const STYLES = `
 
 /* ── Tall icon buttons (power toggle + system menu) ──────────── */
 .ab-icon-btn {
-  width: 36px;
-  height: 54px;
+  width: var(--ab-icon-btn-width);
+  height: var(--ab-icon-btn-size);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid #1a2a2a;
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   color: #2a5a5a;
-  font-size: 18px;
+  font-size: var(--ab-icon-font);
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -196,10 +196,10 @@ const STYLES = `
 }
 .ab-icon-btn + .ab-icon-btn,
 .ab-ui-btns + .ab-icon-btn {
-  margin-left: 4px;
+  margin-left: var(--gap-sm);
 }
 /* First icon button after the slots gets extra left margin */
-.ab-slot ~ .ab-icon-btn:first-of-type { margin-left: 8px; }
+.ab-slot ~ .ab-icon-btn:first-of-type { margin-left: var(--gap-lg); }
 
 .ab-icon-btn:hover {
   border-color: #1a4a5a;
@@ -281,7 +281,7 @@ export class ActionBarUI {
   private buildPowerButton(): void {
     this.powerBtn = document.createElement("button");
     this.powerBtn.className = "ab-icon-btn";
-    this.powerBtn.style.marginLeft = "8px";
+    this.powerBtn.style.marginLeft = "var(--gap-lg)";
     this.powerBtn.title = "Toggle power overlay [Alt]";
     this.powerBtn.textContent = "⚡";
     this.powerBtn.addEventListener("click", () => {
@@ -295,10 +295,10 @@ export class ActionBarUI {
   private buildSystemButton(): void {
     this.systemBtn = document.createElement("button");
     this.systemBtn.className = "ab-icon-btn";
-    this.systemBtn.style.marginLeft = "4px";
+    this.systemBtn.style.marginLeft = "var(--gap-sm)";
     this.systemBtn.title = "System menu";
     this.systemBtn.textContent = "⚙";
-    this.systemBtn.style.fontSize = "16px";
+    this.systemBtn.style.fontSize = "var(--ab-key-font)";
     this.systemBtn.addEventListener("click", () => this.systemPanel?.toggle());
     this.el.appendChild(this.systemBtn);
   }
@@ -407,7 +407,7 @@ export class ActionBarUI {
           "display:flex",
           "align-items:center",
           "justify-content:center",
-          "font-size:15px",
+          "font-size:var(--font-md)",
         ].join(";");
         sprite.textContent = "⛏";
         el.appendChild(sprite);

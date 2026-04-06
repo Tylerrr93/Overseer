@@ -26,9 +26,9 @@ const STYLES = `
   z-index: 101;
   background: rgba(8, 10, 14, 0.97);
   border: 1px solid #2a3a5a;
-  border-radius: 4px;
-  padding: 16px;
-  width: 680px;
+  border-radius: calc(4px * var(--ui-scale));
+  padding: var(--panel-padding);
+  width: calc(680px * var(--ui-scale));
   max-width: 96vw;
   font-family: monospace;
   color: #c0d0e8;
@@ -41,43 +41,44 @@ const STYLES = `
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
+  margin-bottom: var(--gap-xl);
+  padding-bottom: var(--gap-lg);
   border-bottom: 1px solid #1e2a3a;
   cursor: grab;
 }
 #doodad-header:active { cursor: grabbing; }
 #doodad-header h2 {
-  font-size: 11px;
+  font-size: var(--font-md);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #60a0ff;
   margin: 0;
   font-weight: normal;
 }
-#doodad-header span { font-size: 9px; color: #2a3a5a; letter-spacing: 0.1em; }
+#doodad-header span { font-size: var(--font-sm); color: #2a3a5a; letter-spacing: 0.1em; }
 
 #doodad-body {
   display: grid;
-  grid-template-columns: 1fr 180px;
-  gap: 14px;
+  grid-template-columns: 1fr calc(180px * var(--ui-scale));
+  gap: calc(14px * var(--ui-scale));
 }
 
-#doodad-machine { display: flex; flex-direction: column; gap: 10px; }
+#doodad-machine { display: flex; flex-direction: column; gap: var(--gap-xl); }
 
 .slot-group { }
 .slot-group-label {
-  font-size: 8px;
+  font-size: var(--font-2xs);
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #3a5a8a;
-  margin-bottom: 5px;
+  margin-bottom: calc(5px * var(--ui-scale));
 }
-.slot-row { display: flex; flex-wrap: wrap; gap: 3px; }
+.slot-row { display: flex; flex-wrap: wrap; gap: calc(3px * var(--ui-scale)); }
 
 .dd-slot {
-  width: 46px; height: 46px;
-  border-radius: 2px;
+  width: var(--dd-slot-size);
+  height: var(--dd-slot-size);
+  border-radius: calc(2px * var(--ui-scale));
   border: 1px solid #1a2a3a;
   background: rgba(255,255,255,0.02);
   display: flex;
@@ -96,28 +97,34 @@ const STYLES = `
 .dd-slot.fuel { border-color: #3a2a1a; }
 .dd-slot.fuel.filled { border-color: #6a4a1a; background: rgba(200,120,0,0.04); }
 .dd-slot .dd-sprite {
-  width: 22px; height: 22px;
-  border-radius: 2px;
-  margin-bottom: 1px;
+  width: var(--dd-sprite-size);
+  height: var(--dd-sprite-size);
+  border-radius: calc(2px * var(--ui-scale));
+  margin-bottom: calc(1px * var(--ui-scale));
   pointer-events: none;
 }
 .dd-slot .dd-qty {
   position: absolute;
-  bottom: 2px; right: 3px;
-  font-size: 8px; color: #6090c0;
+  bottom: calc(2px * var(--ui-scale));
+  right: calc(3px * var(--ui-scale));
+  font-size: var(--font-2xs);
+  color: #6090c0;
   pointer-events: none;
 }
 .dd-slot .dd-name {
-  font-size: 6px; color: #3a5a8a;
-  text-align: center; max-width: 42px;
+  font-size: var(--font-xs);
+  color: #3a5a8a;
+  text-align: center;
+  max-width: calc(42px * var(--ui-scale));
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   pointer-events: none;
 }
-.dd-slot .dd-empty { font-size: 8px; color: #1a2a3a; pointer-events: none; }
+.dd-slot .dd-empty { font-size: var(--font-2xs); color: #1a2a3a; pointer-events: none; }
 .dd-slot .dd-role-tag {
   position: absolute;
-  top: 2px; left: 3px;
-  font-size: 6px;
+  top: calc(2px * var(--ui-scale));
+  left: calc(3px * var(--ui-scale));
+  font-size: var(--font-xs);
   pointer-events: none;
   opacity: 0.6;
 }
@@ -125,47 +132,53 @@ const STYLES = `
 #doodad-progress {
   background: rgba(255,255,255,0.03);
   border: 1px solid #1a2a3a;
-  border-radius: 2px;
-  padding: 8px;
+  border-radius: calc(2px * var(--ui-scale));
+  padding: var(--gap-lg);
 }
 #doodad-progress-label {
-  font-size: 9px; color: #4a6a9a;
-  margin-bottom: 5px; letter-spacing: 0.1em;
+  font-size: var(--font-sm);
+  color: #4a6a9a;
+  margin-bottom: calc(5px * var(--ui-scale));
+  letter-spacing: 0.1em;
 }
 #doodad-progress-bar-bg {
-  height: 6px;
+  height: calc(6px * var(--ui-scale));
   background: rgba(255,255,255,0.05);
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   overflow: hidden;
 }
 #doodad-progress-bar {
   height: 100%;
   background: #3a8a3a;
-  border-radius: 3px;
+  border-radius: calc(3px * var(--ui-scale));
   width: 0%;
   transition: width 0.1s linear;
 }
 #doodad-progress-idle {
-  font-size: 8px; color: #2a3a4a;
-  text-align: center; padding: 2px 0;
+  font-size: var(--font-2xs);
+  color: #2a3a4a;
+  text-align: center;
+  padding: calc(2px * var(--ui-scale)) 0;
 }
 
 #doodad-recipes { }
 .recipe-label {
-  font-size: 8px; letter-spacing: 0.15em;
-  text-transform: uppercase; color: #3a5a8a;
-  margin-bottom: 5px;
+  font-size: var(--font-2xs);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #3a5a8a;
+  margin-bottom: calc(5px * var(--ui-scale));
 }
-.recipe-list { display: flex; flex-direction: column; gap: 2px; }
+.recipe-list { display: flex; flex-direction: column; gap: calc(2px * var(--ui-scale)); }
 .recipe-btn {
   background: rgba(255,255,255,0.02);
   border: 1px solid #1a2a3a;
   color: #7090b0;
   font-family: monospace;
-  font-size: 8px;
+  font-size: var(--font-2xs);
   letter-spacing: 0.08em;
-  padding: 5px 7px;
-  border-radius: 2px;
+  padding: calc(5px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  border-radius: calc(2px * var(--ui-scale));
   cursor: pointer;
   text-align: left;
   transition: background 0.1s, border-color 0.1s, color 0.1s;
@@ -182,39 +195,47 @@ const STYLES = `
   color: #80c080;
 }
 .recipe-io {
-  font-size: 6px; color: #3a5060; margin-top: 2px;
+  font-size: var(--font-xs);
+  color: #3a5060;
+  margin-top: calc(2px * var(--ui-scale));
   pointer-events: none;
 }
 
 #doodad-player { }
 #doodad-player h3 {
-  font-size: 8px; letter-spacing: 0.15em;
-  text-transform: uppercase; color: #3a5a8a;
-  margin: 0 0 5px 0; font-weight: normal;
+  font-size: var(--font-2xs);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #3a5a8a;
+  margin: 0 0 calc(5px * var(--ui-scale)) 0;
+  font-weight: normal;
 }
 #doodad-player-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 3px;
+  gap: calc(3px * var(--ui-scale));
 }
 
 #doodad-footer {
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: var(--gap-xl);
+  padding-top: var(--gap-lg);
   border-top: 1px solid #1a2a3a;
-  font-size: 9px; color: #1a2a3a;
-  letter-spacing: 0.08em; text-align: center;
+  font-size: var(--font-sm);
+  color: #1a2a3a;
+  letter-spacing: 0.08em;
+  text-align: center;
 }
 #doodad-hint {
   position: fixed;
-  bottom: 92px; left: 50%;
+  bottom: calc(92px * var(--ui-scale));
+  left: 50%;
   transform: translateX(-50%);
   background: rgba(8,10,20,0.9);
   border: 1px solid #2a3a5a;
-  border-radius: 3px;
-  padding: 5px 14px;
+  border-radius: calc(3px * var(--ui-scale));
+  padding: calc(5px * var(--ui-scale)) calc(14px * var(--ui-scale));
   font-family: monospace;
-  font-size: 10px;
+  font-size: var(--font-md);
   letter-spacing: 0.12em;
   color: #60a0ff;
   pointer-events: none;
