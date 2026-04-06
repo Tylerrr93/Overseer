@@ -407,7 +407,6 @@ export class SystemMenuUI extends UIPanel {
 
   private _handleWipe(): void {
     if (!this._confirmingWipe) {
-      // First click — ask for confirmation
       this._confirmingWipe = true;
       this.wipeBtn.textContent = "⚠  CONFIRM — This cannot be undone";
       this.wipeBtn.classList.remove("danger");
@@ -416,7 +415,6 @@ export class SystemMenuUI extends UIPanel {
       return;
     }
 
-    // Second click — execute
     sm.wipe();
     this._showStatus("Save wiped. Reloading…", "err");
     setTimeout(() => window.location.reload(), 600);
@@ -450,7 +448,6 @@ export class SystemMenuUI extends UIPanel {
       this._showStatus("Import successful — reloading…", "ok");
       setTimeout(() => window.location.reload(), 600);
     } catch (e) {
-      // User cancelled file picker — not an error worth showing
       if (e instanceof Error && e.message === "No file selected") {
         this._clearStatus();
       } else {
@@ -480,7 +477,6 @@ export class SystemMenuUI extends UIPanel {
     if (this._statusTimer !== null) clearTimeout(this._statusTimer);
     this.statusEl.textContent = msg;
     this.statusEl.className   = kind;
-    // Auto-clear non-error messages after 4 s
     if (kind !== "err") {
       this._statusTimer = setTimeout(() => this._clearStatus(), 4_000);
     }

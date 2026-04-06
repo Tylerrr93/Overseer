@@ -287,6 +287,15 @@ export class BuildSystem {
       cursorWorldPos.x, cursorWorldPos.y, fp.w, fp.h,
     );
 
+    // Unlock check — ensure the player has researched this doodad.
+    if (!sm.state.unlockedDoodadIds.includes(doodadId)) {
+      bus.emit("ui:notification", {
+        message:  `${def.name} is locked. Research it in the Tech Menu (⚙ → Research).`,
+        severity: "warn",
+      });
+      return;
+    }
+
     // Tile check
     if (!this.validate(origin, fp.w, fp.h)) {
       bus.emit("ui:notification", {

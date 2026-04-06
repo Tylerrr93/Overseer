@@ -29,6 +29,11 @@ export type EventMap = {
    * Pass `active` to force a specific state; omit for a pure flip.
    */
   "power:overlay:toggle": { active?: boolean };
+  // RAM tech system
+  /** Emitted by DoodadSystem whenever the player's RAM total changes. */
+  "ram:changed":   { ram: number };
+  /** Emitted by TechSystem when a technology is successfully unlocked. */
+  "tech:unlocked": { techId: string };
 };
 
 type EventKey = keyof EventMap;

@@ -24,7 +24,7 @@ export const GameConfig = Object.freeze({
   // Persistence
   SAVE_KEY:              "digitized_overseer_save",
   SAVE_TS_KEY:           "digitized_overseer_save_ts",   // unix-ms timestamp of last save
-  SAVE_VERSION:          3,   // v3: terrain overhaul — ore tiles replaced by FeatureState system
+  SAVE_VERSION:          4,   // v4: RAM tech system — unlockedRecipeIds/unlockedDoodadIds/ram added to GameState
   AUTOSAVE_INTERVAL_MS:  60_000,
 
   // Resource generation (Bobiverse post-apocalyptic scarcity)

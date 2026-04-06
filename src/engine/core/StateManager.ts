@@ -6,6 +6,7 @@ import { CursorMode }   from "@t/state";
 import type { GameState, PlayerState, DoodadState, Chunk, ItemStack } from "@t/state";
 import { GameConfig }   from "./GameConfig";
 import { bus }          from "./EventBus";
+import { registry }     from "./Registry";
 
 function makeEmptyInventory(slots: number): (ItemStack | null)[] {
   return Array.from({ length: slots }, () => null);
@@ -31,6 +32,13 @@ function defaultState(): GameState {
     chunks:  {},
     doodads: {},
     belts:   {},
+
+    // RAM tech system — populated by initStarterUnlocks() on new-game start
+    ram:                 0,
+    unlockedTechs:       [],
+    unlockedRecipeIds:   [],
+    unlockedDoodadIds:   [],
+    unlockedSystemFlags: [],
   };
 }
 
@@ -108,6 +116,24 @@ export class StateManager {
 
   reset(): void {
     this.state = defaultState();
+  }
+
+  /**
+   * Populates unlockedRecipeIds and unlockedDoodadIds with every
+   * content def marked isStarter: true.
+   *
+   * Call this ONCE after bootstrapContent() when starting a brand-new
+   * game (i.e. when sm.load() returns false).  Do NOT call it when
+   * loading an existing save — the persisted unlock arrays take precedence.
+   */
+  initStarterUnlocks(): void {
+    this.state.unlockedRecipeIds  = registry.getStarterRecipeIds();
+    this.state.unlockedDoodadIds  = registry.getStarterDoodadIds();
+    console.info(
+      `[StateManager] Starter unlocks applied: ` +
+      `${this.state.unlockedRecipeIds.length} recipes, ` +
+      `${this.state.unlockedDoodadIds.length} doodads.`,
+    );
   }
 
   // ── Chunk helpers ──────────────────────────────────────────
@@ -253,6 +279,14 @@ export class StateManager {
     if (!p.cursorWorldPos)                p.cursorWorldPos    = { x: 0, y: 0 };
     if (p.placementRotation === undefined) p.placementRotation = 0;
     if (!this.state.belts)                (this.state as GameState).belts = {};
+
+    // RAM tech system — guard against saves created before v4
+    const s = this.state;
+    if (typeof s.ram !== "number")              s.ram                 = 0;
+    if (!Array.isArray(s.unlockedTechs))        s.unlockedTechs       = [];
+    if (!Array.isArray(s.unlockedRecipeIds))    s.unlockedRecipeIds   = [];
+    if (!Array.isArray(s.unlockedDoodadIds))    s.unlockedDoodadIds   = [];
+    if (!Array.isArray(s.unlockedSystemFlags))  s.unlockedSystemFlags = [];
 
     // Always reset transient input state on load
     p.cursorMode       = CursorMode.None;

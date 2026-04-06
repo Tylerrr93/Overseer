@@ -16,6 +16,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "iron_plate", qty: 1 }],
     craftingTime: 4000,  // 4 s — intentionally slow to incentivise machines
     machineTag:   "personal_fab",
+    isStarter:    true,
   },
   {
     id:           "draw_wire_personal",
@@ -24,6 +25,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "copper_wire", qty: 3 }],
     craftingTime: 3000,
     machineTag:   "personal_fab",
+    isStarter:    true,
   },
   {
     id:           "craft_gear_personal",
@@ -32,6 +34,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "gear", qty: 1 }],
     craftingTime: 5000,
     machineTag:   "personal_fab",
+    isStarter:    true,
   },
 
   // ── Basic Smelter (automated) ────────────────────────────
@@ -43,6 +46,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "iron_plate", qty: 1 }],
     craftingTime: 2000,  // 2 s — twice as fast as personal
     machineTag:   "smelter",
+    isStarter:    true,
   },
   {
     id:           "smelt_copper",
@@ -51,6 +55,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "copper_wire", qty: 3 }],
     craftingTime: 1500,
     machineTag:   "smelter",
+    isStarter:    true,
   },
   {
     id:           "smelt_steel",
@@ -59,6 +64,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "steel_plate", qty: 2 }],
     craftingTime: 4000,
     machineTag:   "smelter",
+    // Unlocked by: Tech — Precision Fabrication
   },
 
   // ── Fabricator (mid-game components) ─────────────────────
@@ -70,6 +76,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "gear", qty: 1 }],
     craftingTime: 1500,
     machineTag:   "fabricator",
+    // Unlocked by: Tech — Precision Fabrication
   },
   {
     id:           "fab_motor",
@@ -82,6 +89,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "motor", qty: 1 }],
     craftingTime: 6000,
     machineTag:   "fabricator",
+    // Unlocked by: Tech — Precision Fabrication
   },
   {
     id:           "fab_circuit",
@@ -93,6 +101,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "circuit_board", qty: 1 }],
     craftingTime: 8000,
     machineTag:   "fabricator",
+    // Unlocked by: Tech — Precision Fabrication
   },
   {
     id:           "fab_ami_core",
@@ -105,6 +114,7 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "ami_core", qty: 1 }],
     craftingTime: 30000, // 30 s — milestone item
     machineTag:   "fabricator",
+    // Unlocked by: Tech — Precision Fabrication
   },
 
   // ── Carbon Press ─────────────────────────────────────────
@@ -116,5 +126,24 @@ export const RECIPES: RecipeDef[] = [
     outputs:      [{ itemId: "carbon_rod", qty: 1 }],
     craftingTime: 3000,
     machineTag:   "carbon_press",
+    // Unlocked by: Tech — Carbon Processing
+  },
+
+  // ── AMI Uplink Node ──────────────────────────────────────
+  //  Consumes physical materials + grid power and produces
+  //  RAM units — a virtual currency routed directly into
+  //  sm.state.ram by DoodadSystem (never placed in a slot).
+
+  {
+    id:           "uplink_compute",
+    name:         "Uplink Compute Cycle",
+    inputs:       [
+      { itemId: "iron_plate",  qty: 4 },
+      { itemId: "copper_wire", qty: 2 },
+    ],
+    outputs:      [{ itemId: "ram_unit", qty: 5 }],
+    craftingTime: 6000,
+    machineTag:   "uplink",
+    isStarter:    true,
   },
 ];

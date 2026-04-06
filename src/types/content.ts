@@ -13,6 +13,15 @@ export interface ItemDef {
    * Deconstructing that doodad yields 1 of this item back.
    */
   placesDoodadId?: string;
+  /** If true, player has access to this item from the very start. */
+  isStarter?: boolean;
+  /**
+   * If true, this item has no physical form and is never placed in
+   * inventory slots.  Used for abstract currencies like RAM units —
+   * the DoodadSystem routes virtual outputs directly into game-state
+   * instead of a machine's output slot.
+   */
+  isVirtual?: boolean;
 }
 
 export interface RecipeIngredient { itemId: string; qty: number; }
@@ -21,6 +30,8 @@ export interface RecipeDef {
   id: string; name: string;
   inputs: RecipeIngredient[]; outputs: RecipeIngredient[];
   craftingTime: number; machineTag: string;
+  /** If true, this recipe is available from the very start without any tech unlock. */
+  isStarter?: boolean;
 }
 
 export type SlotRole = "input" | "output" | "fuel" | "internal";
@@ -58,6 +69,41 @@ export interface FeatureDef {
    * one unit from this feature.  Defaults to 3000ms if omitted.
    */
   harvestTimeMs?: number;
+}
+
+// ── Tech tree ─────────────────────────────────────────────────
+
+/**
+ * A researchable technology node in the RAM tech tree.
+ * Spending `cost` RAM unlocks the recipes, doodads, and abstract
+ * system flags listed on this def.
+ */
+export interface TechDef {
+  id:                  string;
+  name:                string;
+  description:         string;
+  /** RAM cost to unlock this technology. */
+  cost:                number;
+  /**
+   * Visual tier in the tech tree (1 = earliest).
+   * Techs with the same tier value are rendered in the same column.
+   */
+  tier:                number;
+  /**
+   * IDs of TechDefs that must be unlocked before this one is
+   * researchable.  Empty array or omitted = no prerequisites.
+   */
+  preReqTechIds?:      string[];
+  /** Recipe IDs added to sm.state.unlockedRecipeIds on unlock. */
+  unlocksRecipeIds:    string[];
+  /** Doodad IDs added to sm.state.unlockedDoodadIds on unlock. */
+  unlocksDoodadIds:    string[];
+  /**
+   * Abstract flag strings added to sm.state.unlockedSystemFlags.
+   * Engine systems can test these to gate features that don't map
+   * cleanly to a single recipe or doodad (e.g. "drone_network_enabled").
+   */
+  unlocksSystemFlags:  string[];
 }
 
 export interface DoodadDef {
@@ -100,4 +146,6 @@ export interface DoodadDef {
    * Default 0.5. Quantities are floored.
    */
   refundFraction?:   number;
+  /** If true, this doodad is buildable from the very start without any tech unlock. */
+  isStarter?: boolean;
 }

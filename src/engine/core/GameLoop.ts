@@ -15,11 +15,12 @@ import type { WorldGen }                from "@engine/world/WorldGen";
 import { GameConfig } from "./GameConfig";
 import { sm } from "./StateManager";
 
-interface BuildUITickable  { tick(): void; }
-interface ChestUITickable  { tick(nearbyId: string | null): void; }
-interface DoodadUITickable { tick(nearbyId: string | null): void; }
-interface PowerUITickable  { tick(): void; }
+interface BuildUITickable   { tick(): void; }
+interface ChestUITickable   { tick(nearbyId: string | null): void; }
+interface DoodadUITickable  { tick(nearbyId: string | null): void; }
+interface PowerUITickable   { tick(): void; }
 interface ActionBarTickable { tick(): void; }
+interface TechUITickable    { tick(): void; isCurrentlyOpen(): boolean; }
 
 const MAX_DELTA_MS = 200;
 
@@ -27,13 +28,15 @@ export class GameLoop {
   private running  = false;
   private lastTs   = 0;
   private rafId    = 0;
-  private buildUI:  BuildUITickable  | null = null;
-  private chestUI:  ChestUITickable  | null = null;
-  private doodadUI: DoodadUITickable | null = null;
-  private powerUI:  PowerUITickable  | null = null;
+  private buildUI:     BuildUITickable   | null = null;
+  private chestUI:     ChestUITickable   | null = null;
+  private doodadUI:    DoodadUITickable  | null = null;
+  private powerUI:     PowerUITickable   | null = null;
   private actionBarUI: ActionBarTickable | null = null;
-  
+  private techUI:      TechUITickable    | null = null;
+
   setActionBarUI(ui: ActionBarTickable): void { this.actionBarUI = ui; }
+  setTechUI(ui: TechUITickable):         void { this.techUI      = ui; }
 
   constructor(
     private readonly renderer:           Renderer,
@@ -98,6 +101,9 @@ export class GameLoop {
     this.doodadUI?.tick(this.interactionSystem.nearestInteractableId);
     this.powerUI?.tick();
     this.actionBarUI?.tick();
+    // TechUI tick is skipped when the panel is hidden — it only needs to
+    // update the live RAM counter and button states while visible.
+    if (this.techUI?.isCurrentlyOpen()) this.techUI.tick();
 
     sm.state.tickCount++;
 

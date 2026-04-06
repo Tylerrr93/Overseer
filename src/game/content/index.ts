@@ -13,16 +13,18 @@ import { ITEMS }    from "./items";
 import { RECIPES }  from "./recipes";
 import { DOODADS }  from "./doodads";
 import { FEATURES } from "./features";
+import { TECHS }    from "./techs";
 
 export function bootstrapContent(): void {
   registry.registerItems(ITEMS);
   registry.registerRecipes(RECIPES);
   registry.registerDoodads(DOODADS);
   registry.registerFeatures(FEATURES);
+  registry.registerTechs(TECHS);
 
   console.info(
     `[Content] Registered: ${ITEMS.length} items, ` +
     `${RECIPES.length} recipes, ${DOODADS.length} doodads, ` +
-    `${FEATURES.length} features.`
+    `${FEATURES.length} features, ${TECHS.length} techs.`
   );
 }

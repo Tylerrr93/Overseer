@@ -21,6 +21,7 @@ import { BeltSystem }               from "@engine/systems/BeltSystem";
 import { GeneratorSystem }          from "@engine/systems/GeneratorSystem";
 import { PowerSystem }              from "@engine/systems/PowerSystem";
 import { DoodadInteractionSystem }  from "@engine/systems/DoodadInteractionSystem";
+import { TechSystem }               from "@engine/systems/TechSystem";
 import { WorldGen }                 from "@engine/world/WorldGen";
 import { InventoryUI }              from "@game/ui/InventoryUI";
 import { BuildUI }                  from "@game/ui/BuildUI";
@@ -29,6 +30,7 @@ import { DoodadUI }                 from "@game/ui/DoodadUI";
 import { PowerUI }                  from "@game/ui/PowerUI";
 import { ActionBarUI }              from "@game/ui/ActionBarUI";
 import { SystemMenuUI }             from "@game/ui/SystemMenuUI";
+import { TechUI }                   from "@game/ui/TechUI";
 import { UIStyleManager }           from "@game/ui/UIStyleManager";
 
 async function main() {
@@ -68,6 +70,7 @@ async function main() {
   const interactionSystem  = new DoodadInteractionSystem();
   const worldGen           = new WorldGen();
   const buildSystem        = new BuildSystem(renderer);
+  const techSystem         = new TechSystem();
 
   renderer.buildSystem = buildSystem;
   renderer.powerSystem = powerSystem;
@@ -79,18 +82,23 @@ async function main() {
   const doodadUI     = new DoodadUI();
   const powerUI      = new PowerUI();
   const systemMenuUI = new SystemMenuUI();
+  const techUI       = new TechUI();
   const actionBarUI  = new ActionBarUI();
   powerUI.setPowerSystem(powerSystem);
   actionBarUI.setInventoryPanel(inventoryUI);
   actionBarUI.setBuildPanel(buildUI);
   actionBarUI.setSystemPanel(systemMenuUI);
   actionBarUI.setPowerPanel(powerUI);
+  actionBarUI.setTechPanel(techUI);
+  techUI.setTechSystem(techSystem);
   playerSystem.setFeedbackUI(inventoryUI);
 
   // ── 5. State ───────────────────────────────────────────────
   const loaded = sm.load();
   if (!loaded) {
     console.info("[main] No save — starting new game.");
+    // Inject starter recipe/doodad unlocks now that content is registered.
+    sm.initStarterUnlocks();
     worldGen.ensureChunksAround(0, 0, GameConfig.RENDER_CHUNK_RADIUS);
   }
 
@@ -109,13 +117,14 @@ async function main() {
   loop.setDoodadUI(doodadUI);
   loop.setPowerUI(powerUI);
   loop.setActionBarUI(actionBarUI);
+  loop.setTechUI(techUI);
   loop.start();
 
   // ── 8. Debug ───────────────────────────────────────────────
   (window as unknown as Record<string, unknown>).__game = {
     sm, registry, loop, inventoryUI, buildUI, chestUI, doodadUI,
     buildSystem, interactionSystem, powerSystem, generatorSystem, powerUI,
-    systemMenuUI,
+    systemMenuUI, techUI, techSystem,
   };
 
   console.info("🌍 Digitized Overseer — PixiJS v8 renderer booted.");

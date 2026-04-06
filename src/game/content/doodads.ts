@@ -8,6 +8,7 @@ import type { DoodadDef } from "@t/content";
 
 export const DOODADS: DoodadDef[] = [
   // ── Personal Fabricator (player-carried tool, 1×1) ───────
+  //  Always available — never placed via BuildSystem.
   {
     id:          "personal_fab",
     name:        "Personal Fabricator",
@@ -25,6 +26,7 @@ export const DOODADS: DoodadDef[] = [
     machineTag:        "personal_fab",
     interactable:      true,
     powerDraw:         0,
+    isStarter:         true,
   },
 
   // ── Basic Smelter (2×2) ──────────────────────────────────
@@ -49,6 +51,7 @@ export const DOODADS: DoodadDef[] = [
     powerDraw:      20,
     tickIntervalMs: 500,
     buildTimeMs:    3000,
+    isStarter:      true,
     cost: [
       { itemId: "scrap_metal", qty: 8 },
       { itemId: "coal",        qty: 2 },
@@ -56,6 +59,7 @@ export const DOODADS: DoodadDef[] = [
   },
 
   // ── Fabricator (3×3) ─────────────────────────────────────
+  //  Unlocked by: Tech — Precision Fabrication
   {
     id:          "fabricator",
     name:        "Fabricator",
@@ -89,6 +93,7 @@ export const DOODADS: DoodadDef[] = [
 
   // ── Carbon Press ──────────────────────────────────────────
   // Converts coal into carbon rods for steel and circuit production.
+  // Unlocked by: Tech — Carbon Processing
   {
     id:          "carbon_press",
     name:        "Carbon Press",
@@ -141,6 +146,7 @@ export const DOODADS: DoodadDef[] = [
     tickIntervalMs: 2000,
     texture:       "assets/extractor_1.png",
     buildTimeMs:   3000,
+    isStarter:     true,
     cost: [
       { itemId: "scrap_metal", qty: 4 },
       { itemId: "coal",        qty: 1 },
@@ -171,6 +177,7 @@ export const DOODADS: DoodadDef[] = [
       active: ["assets/coal_extractor_1.png", "assets/coal_extractor_2.png"],
     },
     buildTimeMs: 10000,
+    isStarter:   true,
     cost: [
       { itemId: "scrap_metal", qty: 5 },
       { itemId: "iron_ore",    qty: 2 },
@@ -187,6 +194,7 @@ export const DOODADS: DoodadDef[] = [
     slots: [],
     ports: [],
     powerDraw:   0,
+    isStarter:   true,
     // Intentionally cheap — belts are placed in large runs.
     cost: [
       { itemId: "scrap_metal", qty: 1 },
@@ -207,6 +215,7 @@ export const DOODADS: DoodadDef[] = [
     connectRadius: 6,
     interactable: false,
     buildTimeMs:  1000,
+    isStarter:    true,
     cost: [
       { itemId: "scrap_metal", qty: 2 },
       { itemId: "copper_ore",  qty: 1 },
@@ -232,6 +241,7 @@ export const DOODADS: DoodadDef[] = [
     powerGeneration:  500,
     tickIntervalMs:   500,
     buildTimeMs:      4000,
+    isStarter:        true,
     cost: [
       { itemId: "scrap_metal", qty: 10 },
       { itemId: "coal",        qty:  4 },
@@ -278,8 +288,40 @@ export const DOODADS: DoodadDef[] = [
     interactable: true,
     powerDraw:    0,
     buildTimeMs:  2000,
+    isStarter:    true,
     cost: [
       { itemId: "scrap_metal", qty: 6 },
+    ],
+  },
+
+  // ── AMI Uplink Node (2×2) ────────────────────────────────
+  //  The infinite resource sink.  Consumes physical items + grid
+  //  power; outputs RAM units (virtual) that are added directly
+  //  to sm.state.ram by DoodadSystem.
+  {
+    id:          "ami_uplink_node",
+    name:        "AMI Uplink Node",
+    description: "Processes physical resources into RAM Allocation — the currency of machine cognition. Connect to the power grid and feed with iron plates and copper wire.",
+    sprite:      "#003a5a",
+    footprint:   { w: 2, h: 2 },
+    slots: [
+      { role: "input", filter: ["metal"],    capacity: 100 },
+      { role: "input", filter: ["electrical"], capacity: 100 },
+    ],
+    ports: [
+      { dx: 0, dy: 0, dir: "N", role: "input" },
+      { dx: 1, dy: 0, dir: "N", role: "input" },
+    ],
+    machineTag:   "uplink",
+    interactable: true,
+    powerDraw:    80,
+    tickIntervalMs: 500,
+    buildTimeMs:  5000,
+    isStarter:    true,
+    cost: [
+      { itemId: "scrap_metal",  qty: 8 },
+      { itemId: "iron_plate",   qty: 4 },
+      { itemId: "copper_wire",  qty: 4 },
     ],
   },
 ];

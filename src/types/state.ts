@@ -132,4 +132,20 @@ export interface GameState {
   chunks:    Record<string, Chunk>;
   doodads:   Record<string, DoodadState>;
   belts:     Record<string, BeltSegment>;
+
+  // ── RAM Tech System ────────────────────────────────────────
+  /** Current unspent RAM allocation units. */
+  ram:                 number;
+  /** IDs of TechDefs already unlocked by the player. */
+  unlockedTechs:       string[];
+  /** IDs of RecipeDefs the player may currently craft. */
+  unlockedRecipeIds:   string[];
+  /** IDs of DoodadDefs the player may currently build. */
+  unlockedDoodadIds:   string[];
+  /**
+   * Abstract flag strings set by TechDefs.
+   * Engine systems gate features by checking this array
+   * (e.g. `state.unlockedSystemFlags.includes("drone_network_enabled")`).
+   */
+  unlockedSystemFlags: string[];
 }

@@ -6,13 +6,14 @@
 //  files directly.
 // ============================================================
 
-import type { ItemDef, RecipeDef, DoodadDef, FeatureDef } from "@t/content";
+import type { ItemDef, RecipeDef, DoodadDef, FeatureDef, TechDef } from "@t/content";
 
 export class Registry {
   private readonly items        = new Map<string, ItemDef>();
   private readonly recipes      = new Map<string, RecipeDef>();
   private readonly doodads      = new Map<string, DoodadDef>();
   private readonly features     = new Map<string, FeatureDef>();
+  private readonly techs        = new Map<string, TechDef>();
   /** Reverse index: doodadId → the ItemDef whose placesDoodadId matches it. */
   private readonly itemByDoodad = new Map<string, ItemDef>();
 
@@ -49,12 +50,20 @@ export class Registry {
     this.features.set(def.id, Object.freeze(def));
   }
 
+  registerTech(def: TechDef): void {
+    if (this.techs.has(def.id)) {
+      throw new Error(`[Registry] Duplicate tech id: "${def.id}"`);
+    }
+    this.techs.set(def.id, Object.freeze(def));
+  }
+
   // -- Bulk helpers for content files -------------------------
 
   registerItems(defs: ItemDef[]): void         { defs.forEach(d => this.registerItem(d)); }
   registerRecipes(defs: RecipeDef[]): void     { defs.forEach(d => this.registerRecipe(d)); }
   registerDoodads(defs: DoodadDef[]): void     { defs.forEach(d => this.registerDoodad(d)); }
   registerFeatures(defs: FeatureDef[]): void   { defs.forEach(d => this.registerFeature(d)); }
+  registerTechs(defs: TechDef[]): void         { defs.forEach(d => this.registerTech(d)); }
 
   // -- Lookups (strict — throw if missing) --------------------
 
@@ -82,12 +91,19 @@ export class Registry {
     return def;
   }
 
+  getTech(id: string): TechDef {
+    const def = this.techs.get(id);
+    if (!def) throw new Error(`[Registry] Unknown tech: "${id}"`);
+    return def;
+  }
+
   // -- Optional lookups (return undefined) --------------------
 
   findItem(id: string): ItemDef | undefined       { return this.items.get(id); }
   findRecipe(id: string): RecipeDef | undefined   { return this.recipes.get(id); }
   findDoodad(id: string): DoodadDef | undefined   { return this.doodads.get(id); }
   findFeature(id: string): FeatureDef | undefined { return this.features.get(id); }
+  findTech(id: string): TechDef | undefined       { return this.techs.get(id); }
 
   /**
    * Returns the ItemDef whose `placesDoodadId` matches `doodadId`, or
@@ -108,6 +124,23 @@ export class Registry {
   allRecipes():  Readonly<Map<string, RecipeDef>>  { return this.recipes; }
   allDoodads():  Readonly<Map<string, DoodadDef>>  { return this.doodads; }
   allFeatures(): Readonly<Map<string, FeatureDef>> { return this.features; }
+  allTechs():    Readonly<Map<string, TechDef>>    { return this.techs; }
+
+  // -- Starter helpers (called by StateManager at new-game init) --
+
+  /** Returns the IDs of every RecipeDef with isStarter === true. */
+  getStarterRecipeIds(): string[] {
+    return [...this.recipes.values()]
+      .filter(r => r.isStarter)
+      .map(r => r.id);
+  }
+
+  /** Returns the IDs of every DoodadDef with isStarter === true. */
+  getStarterDoodadIds(): string[] {
+    return [...this.doodads.values()]
+      .filter(d => d.isStarter)
+      .map(d => d.id);
+  }
 }
 
 /** Singleton — import this everywhere in the engine. */

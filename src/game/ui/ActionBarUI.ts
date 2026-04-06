@@ -242,14 +242,17 @@ export class ActionBarUI {
   private buildPanel:     UIPanel | null = null;
   private systemPanel:    UIPanel | null = null;
   private powerPanel:     UIPanel | null = null;
+  private techPanel:      UIPanel | null = null;
   private invBtn!:        HTMLButtonElement;
   private buildBtn!:      HTMLButtonElement;
   private systemBtn!:     HTMLButtonElement;
+  private techBtn!:       HTMLButtonElement;
 
   setInventoryPanel(panel: UIPanel): void { this.inventoryPanel = panel; }
   setBuildPanel(panel: UIPanel):     void { this.buildPanel     = panel; }
   setSystemPanel(panel: UIPanel):    void { this.systemPanel    = panel; }
   setPowerPanel(panel: UIPanel):     void { this.powerPanel     = panel; }
+  setTechPanel(panel: UIPanel):      void { this.techPanel      = panel; }
 
   constructor() {
     injectStyles();
@@ -267,6 +270,7 @@ export class ActionBarUI {
     this.buildSlots();
     this.buildPowerButton();
     this.buildUIButtons();
+    this.buildTechButton();
     this.buildSystemButton();
     this.bindKeys();
   }
@@ -283,6 +287,18 @@ export class ActionBarUI {
       bus.emit("power:overlay:toggle", {});
     });
     this.el.appendChild(this.powerBtn);
+  }
+
+  // ── Tech / Research button ────────────────────────────────
+
+  private buildTechButton(): void {
+    this.techBtn = document.createElement("button");
+    this.techBtn.className = "ab-icon-btn";
+    this.techBtn.style.marginLeft = "var(--gap-sm)";
+    this.techBtn.title = "Research / Tech tree [T]";
+    this.techBtn.textContent = "◬";
+    this.techBtn.addEventListener("click", () => this.techPanel?.toggle());
+    this.el.appendChild(this.techBtn);
   }
 
   // ── System / settings button ──────────────────────────────
@@ -548,6 +564,7 @@ export class ActionBarUI {
     // Polled every frame so ESC / external closes are always reflected.
     this.invBtn?.classList.toggle("active",    this.inventoryPanel?.isCurrentlyOpen() ?? false);
     this.buildBtn?.classList.toggle("active",  this.buildPanel?.isCurrentlyOpen()     ?? false);
+    this.techBtn?.classList.toggle("active",   this.techPanel?.isCurrentlyOpen()      ?? false);
     this.systemBtn?.classList.toggle("active", this.systemPanel?.isCurrentlyOpen()    ?? false);
     this.powerBtn?.classList.toggle("active",  this.powerPanel?.isCurrentlyOpen()     ?? false);
   }

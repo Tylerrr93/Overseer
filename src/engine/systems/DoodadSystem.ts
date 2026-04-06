@@ -185,7 +185,10 @@ export class DoodadSystem {
     // The machine waits (stalls) if inputs aren't ready — no auto-switching.
     if (doodad.pinnedRecipeId) {
       const pinned = registry.findRecipe(doodad.pinnedRecipeId);
-      if (pinned && this.canConsumeInputs(doodad, def, pinned)) return pinned;
+      // Silently stall if the pinned recipe is no longer unlocked.
+      if (pinned
+        && sm.state.unlockedRecipeIds.includes(pinned.id)
+        && this.canConsumeInputs(doodad, def, pinned)) return pinned;
       return null; // stall until inputs match the pinned recipe
     }
 
@@ -196,6 +199,9 @@ export class DoodadSystem {
       const allowed = new Set(def.allowedRecipeIds);
       candidates = candidates.filter(r => allowed.has(r.id));
     }
+    // Only consider recipes the player has unlocked.
+    const unlocked = sm.state.unlockedRecipeIds;
+    candidates = candidates.filter(r => unlocked.includes(r.id));
     for (const recipe of candidates) {
       if (this.canConsumeInputs(doodad, def, recipe)) return recipe;
     }
@@ -253,6 +259,11 @@ export class DoodadSystem {
   private canOutputItems(doodad: DoodadState, def: DoodadDef, recipe: RecipeDef): boolean {
     const outputIndices = this.outputSlotIndices(def);
     for (const out of recipe.outputs) {
+      // Virtual items (e.g. ram_unit) bypass physical slot checks entirely —
+      // they are written to game-state directly in writeOutputs().
+      const itemDef = registry.findItem(out.itemId);
+      if (itemDef?.isVirtual) continue;
+
       let toPlace = out.qty;
       for (const idx of outputIndices) {
         const slot = doodad.inventory[idx];
@@ -372,6 +383,17 @@ export class DoodadSystem {
   private writeOutputs(doodad: DoodadState, def: DoodadDef, recipe: RecipeDef): void {
     const outputIndices = this.outputSlotIndices(def);
     for (const out of recipe.outputs) {
+      // Virtual items are routed to game-state, never to inventory slots.
+      const itemDef = registry.findItem(out.itemId);
+      if (itemDef?.isVirtual) {
+        // Currently only ram_unit is virtual; route its output to sm.state.ram.
+        if (out.itemId === "ram_unit") {
+          sm.state.ram += out.qty;
+          bus.emit("ram:changed", { ram: sm.state.ram });
+        }
+        continue;
+      }
+
       let remaining = out.qty;
       for (const idx of outputIndices) {
         if (remaining <= 0) break;
