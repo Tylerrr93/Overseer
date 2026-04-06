@@ -37,6 +37,13 @@ const CS             = GameConfig.CHUNK_SIZE;
 const BELT_MAX_ITEMS = 4;
 
 export class ExtractorSystem {
+  /**
+   * Per-doodad fuel tick counters — tracks how many extraction ticks have
+   * fired since the last fuel consumption.  In-memory only; resets on reload
+   * (a few free cycles on load is harmless).
+   */
+  private readonly fuelCounters = new Map<string, number>();
+
   update(deltaMs: number): void {
     for (const doodad of sm.allDoodads()) {
       const def = registry.findDoodad(doodad.defId);
@@ -47,6 +54,7 @@ export class ExtractorSystem {
         doodad,
         def.machineTag,
         FUEL_PER_CYCLE[def.machineTag] ?? 0,
+        def.fuelEveryNTicks ?? 1,
         def.tickIntervalMs ?? 2000,
         deltaMs,
       );
@@ -56,11 +64,12 @@ export class ExtractorSystem {
   // ── Tick ──────────────────────────────────────────────────
 
   private tickExtractor(
-    doodad:      DoodadState,
-    machineTag:  string,
-    fuelPerCycle: number,
-    interval:    number,
-    deltaMs:     number,
+    doodad:        DoodadState,
+    machineTag:    string,
+    fuelPerCycle:  number,
+    fuelEveryNTicks: number,
+    interval:      number,
+    deltaMs:       number,
   ): void {
     if (doodad.construction?.mode === "building") return;
 
@@ -73,16 +82,24 @@ export class ExtractorSystem {
 
     while (doodad.tickAccumulatorMs >= interval) {
       doodad.tickAccumulatorMs -= interval;
-      this.tryExtract(doodad, machineTag, fuelPerCycle);
+      this.tryExtract(doodad, machineTag, fuelPerCycle, fuelEveryNTicks);
     }
   }
 
   private tryExtract(
-    doodad:      DoodadState,
-    machineTag:  string,
-    fuelPerCycle: number,
+    doodad:          DoodadState,
+    machineTag:      string,
+    fuelPerCycle:    number,
+    fuelEveryNTicks: number,
   ): void {
     const def = registry.getDoodad(doodad.defId);
+
+    // ── Fuel rhythm counter ───────────────────────────────────
+    // Increment per extraction attempt; only consume fuel every N ticks.
+    const prevCount      = this.fuelCounters.get(doodad.id) ?? 0;
+    const newCount       = prevCount + 1;
+    const consumeFuel    = newCount >= fuelEveryNTicks;
+    this.fuelCounters.set(doodad.id, consumeFuel ? 0 : newCount);
 
     // 1. Find the feature at the extractor's origin tile
     const featureInfo = this.getFeatureAt(doodad.origin.tx, doodad.origin.ty);
@@ -95,11 +112,11 @@ export class ExtractorSystem {
     // 2. Check this extractor can mine this feature type
     if (featureDef.extractorTag !== undefined && featureDef.extractorTag !== machineTag) return;
 
-    // 3. Power / fuel check — same hybrid logic as before
+    // 3. Power / fuel check — hybrid logic with fuelEveryNTicks throttle
     if (def.powerDraw > 0) {
       if (!doodad.powered) {
-        // Off-grid: require fuel
-        if (fuelPerCycle > 0) {
+        // Off-grid: require fuel every N ticks
+        if (fuelPerCycle > 0 && consumeFuel) {
           const fuelIdx = this.findFuelSlot(doodad, def.slots, fuelPerCycle);
           if (fuelIdx === -1) return;
           const fuelSlot = doodad.inventory[fuelIdx]!;
@@ -108,8 +125,8 @@ export class ExtractorSystem {
         }
       }
       // else: grid-powered — no fuel consumed
-    } else if (fuelPerCycle > 0) {
-      // Always fuel-driven (powerDraw === 0)
+    } else if (fuelPerCycle > 0 && consumeFuel) {
+      // Always fuel-driven (powerDraw === 0), every N ticks
       const fuelIdx = this.findFuelSlot(doodad, def.slots, fuelPerCycle);
       if (fuelIdx === -1) return;
       const fuelSlot = doodad.inventory[fuelIdx]!;

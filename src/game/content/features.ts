@@ -32,7 +32,7 @@ export const FEATURES: FeatureDef[] = [
     yieldsItemId:  "iron_ore",
     baseYield:     400,
     extractorTag:  "extractor_iron",
-    harvestTimeMs: 3500,
+    harvestTimeMs: 2000,
   },
 
   // ── Copper vein ──────────────────────────────────────────────
@@ -43,7 +43,7 @@ export const FEATURES: FeatureDef[] = [
     yieldsItemId:  "copper_ore",
     baseYield:     350,
     extractorTag:  "extractor_copper",
-    harvestTimeMs: 3200,
+    harvestTimeMs: 2000,
   },
 
   // ── Coal seam ────────────────────────────────────────────────
@@ -54,6 +54,6 @@ export const FEATURES: FeatureDef[] = [
     yieldsItemId:  "coal",
     baseYield:     600,     // coal is more abundant — primary fuel source
     extractorTag:  "extractor_coal",
-    harvestTimeMs: 2800,
+    harvestTimeMs: 2000,
   },
 ];

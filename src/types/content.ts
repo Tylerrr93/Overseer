@@ -148,4 +148,10 @@ export interface DoodadDef {
   refundFraction?:   number;
   /** If true, this doodad is buildable from the very start without any tech unlock. */
   isStarter?: boolean;
+  /**
+   * When set, the extractor only consumes one unit of fuel every N extraction ticks
+   * instead of every tick.  Defaults to 1 (consume every tick).
+   * E.g. fuelEveryNTicks: 3 means 1 coal per 3 extraction cycles.
+   */
+  fuelEveryNTicks?: number;
 }

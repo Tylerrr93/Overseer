@@ -28,6 +28,7 @@ function defaultState(): GameState {
       maxHealth:         100,
       cursorMode:        CursorMode.None,
       harvestProgress:   null,
+      inspectMode:       false,
     },
     chunks:  {},
     doodads: {},
@@ -292,6 +293,7 @@ export class StateManager {
     p.cursorMode       = CursorMode.None;
     p.heldItemId       = null;
     p.harvestProgress  = null;
+    p.inspectMode      = false;
     if (p.harvestProgress === undefined) p.harvestProgress = null;
 
     // Migrate doodad instances

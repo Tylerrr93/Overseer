@@ -131,6 +131,8 @@ export class Renderer {
   // ── Feature sync ──────────────────────────────────────────
   /** "tx,ty" → feature sprite — cleared when feature is depleted */
   private featureSprites  = new Map<string, PIXI.Graphics>();
+  /** "tx,ty" → remaining-yield text label (finite features only) */
+  private featureLabels   = new Map<string, PIXI.Text>();
 
   // ── Doodad sync ───────────────────────────────────────────
   /** doodadId → Container(body + border + label) */
@@ -321,6 +323,11 @@ export class Renderer {
     // Build the full set of live feature keys this frame
     const live = new Set<string>();
 
+    // Compute hovered tile once for inspect labels
+    const { cursorWorldPos, inspectMode } = sm.state.player;
+    const hoverTx = Math.floor(cursorWorldPos.x / T);
+    const hoverTy = Math.floor(cursorWorldPos.y / T);
+
     for (const chunk of Object.values(sm.state.chunks)) {
       if (!chunk.generated || !chunk.features) continue;
       for (const [localKey, fs] of Object.entries(chunk.features)) {
@@ -332,9 +339,10 @@ export class Renderer {
         const worldKey = `${tx},${ty}`;
         live.add(worldKey);
 
+        const featureDef = registry.findFeature(fs.featureId);
+
         if (!this.featureSprites.has(worldKey)) {
           // Resolve the sprite colour from the FeatureDef
-          const featureDef = registry.findFeature(fs.featureId);
           const color = featureDef?.sprite.startsWith("#")
             ? hexToNum(featureDef.sprite)
             : 0x888866;
@@ -349,16 +357,57 @@ export class Renderer {
           gfx.y = ty * T;
           this.featureLayer.addChild(gfx);
           this.featureSprites.set(worldKey, gfx);
+
+          // Yield label — created hidden; only shown when inspecting this tile
+          if (!featureDef?.infinite) {
+            const label = new PIXI.Text({
+              text:  String(fs.remainingYield),
+              style: { fill: "#88ff88", fontFamily: "monospace", fontSize: 9, fontWeight: "bold" },
+            });
+            label.x = tx * T + 3;
+            label.y = ty * T + T - 13;
+            label.visible = false;
+            this.featureLayer.addChild(label);
+            this.featureLabels.set(worldKey, label);
+          }
+        }
+
+        // Update depletion alpha every frame for finite features
+        if (!featureDef?.infinite && featureDef) {
+          const ratio = fs.remainingYield / featureDef.baseYield;
+          const gfx   = this.featureSprites.get(worldKey);
+          if (gfx) gfx.alpha = 0.35 + ratio * 0.65; // 0.35 (near-empty) → 1.0 (full)
+
+          // Label: only show when in inspect mode and cursor is on this exact tile
+          const label = this.featureLabels.get(worldKey);
+          if (label) {
+            const hovered = tx === hoverTx && ty === hoverTy;
+            label.visible = (inspectMode ?? false) && hovered;
+            if (label.visible) {
+              label.text = String(fs.remainingYield);
+              (label.style as PIXI.TextStyle).fill =
+                ratio > 0.5 ? "#88ff88" :
+                ratio > 0.25 ? "#ffcc44" :
+                "#ff5555";
+            }
+          }
         }
       }
     }
 
-    // Remove sprites whose features have been depleted
+    // Remove sprites and labels whose features have been depleted
     for (const [key, gfx] of this.featureSprites) {
       if (!live.has(key)) {
         this.featureLayer.removeChild(gfx);
         gfx.destroy();
         this.featureSprites.delete(key);
+
+        const label = this.featureLabels.get(key);
+        if (label) {
+          this.featureLayer.removeChild(label);
+          label.destroy();
+          this.featureLabels.delete(key);
+        }
       }
     }
   }

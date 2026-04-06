@@ -129,6 +129,28 @@ export const RECIPES: RecipeDef[] = [
     // Unlocked by: Tech — Carbon Processing
   },
 
+  // ── Fabricator — Automated Processing ───────────────────
+  //  Unlocked by: Tech — Automated Processing
+
+  {
+    id:           "fab_copper_wire",
+    name:         "Fabricate Copper Wire",
+    inputs:       [{ itemId: "copper_ore", qty: 2 }],
+    outputs:      [{ itemId: "copper_wire", qty: 4 }],
+    craftingTime: 2000,   // faster than smelter's smelt_copper, +1 wire bonus
+    machineTag:   "fabricator",
+    // Unlocked by: Tech — Automated Processing
+  },
+  {
+    id:           "fab_iron_plate",
+    name:         "Fabricate Iron Plate",
+    inputs:       [{ itemId: "iron_ore", qty: 2 }, { itemId: "coal", qty: 1 }],
+    outputs:      [{ itemId: "iron_plate", qty: 2 }],
+    craftingTime: 2000,   // 2× output vs smelter per same inputs
+    machineTag:   "fabricator",
+    // Unlocked by: Tech — Automated Processing
+  },
+
   // ── AMI Uplink Node ──────────────────────────────────────
   //  Consumes physical materials + grid power and produces
   //  RAM units — a virtual currency routed directly into

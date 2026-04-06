@@ -27,7 +27,37 @@ export const TECHS: TechDef[] = [
     unlocksSystemFlags:  [],
   },
 
-  // ── Tier 2 — requires Carbon Processing ──────────────────
+  {
+    id:          "copper_extraction",
+    name:        "Copper Extraction",
+    description:
+      "Retrofit an extractor chassis for copper-vein drilling. " +
+      "Copper is essential for wiring, motors, and circuit boards — " +
+      "automating its collection is the first step toward scaled production.",
+    cost:                15,
+    tier:                1,
+    preReqTechIds:       [],
+    unlocksRecipeIds:    [],
+    unlocksDoodadIds:    ["copper_extractor"],
+    unlocksSystemFlags:  [],
+  },
+
+  {
+    id:          "grid_optimization",
+    name:        "Grid Optimization",
+    description:
+      "High-efficiency power distribution using tuned resonance coils. " +
+      "Unlocks the Power Relay — a single node that covers twice the area " +
+      "of a standard power node, reducing wiring overhead across the factory.",
+    cost:                25,
+    tier:                1,
+    preReqTechIds:       [],
+    unlocksRecipeIds:    [],
+    unlocksDoodadIds:    ["power_relay"],
+    unlocksSystemFlags:  [],
+  },
+
+  // ── Tier 2 — require one tier-1 tech ─────────────────────
 
   {
     id:          "precision_fabrication",
@@ -48,5 +78,67 @@ export const TECHS: TechDef[] = [
     ],
     unlocksDoodadIds:    ["fabricator"],
     unlocksSystemFlags:  [],
+  },
+
+  {
+    id:          "automated_processing",
+    name:        "Automated Processing",
+    description:
+      "Reconfigure the Fabricator for bulk raw-material conversion. " +
+      "Enables fabricator recipes for iron plates and copper wire — " +
+      "faster output ratios than the Basic Smelter, freeing it for steel work.",
+    cost:                40,
+    tier:                2,
+    preReqTechIds:       ["copper_extraction"],
+    unlocksRecipeIds:    ["fab_copper_wire", "fab_iron_plate"],
+    unlocksDoodadIds:    [],
+    unlocksSystemFlags:  [],
+  },
+
+  {
+    id:          "grid_expansion",
+    name:        "Grid Expansion",
+    description:
+      "Capacitor-bank substations that anchor power to large industrial zones. " +
+      "Unlocks the Substation — a 2×2 hub with a 12-tile power radius and " +
+      "16-tile connect range, eliminating relay chains in dense factory cores.",
+    cost:                35,
+    tier:                2,
+    preReqTechIds:       ["grid_optimization"],
+    unlocksRecipeIds:    [],
+    unlocksDoodadIds:    ["substation"],
+    unlocksSystemFlags:  [],
+  },
+
+  // ── Tier 3 — require two tier-2 techs ────────────────────
+
+  {
+    id:          "advanced_electronics",
+    name:        "Advanced Electronics",
+    description:
+      "Miniaturised sensor arrays and programmable logic controllers. " +
+      "The foundation of autonomous machine networks, drone coordination, " +
+      "and the next generation of AMI cognitive architecture.",
+    cost:                80,
+    tier:                3,
+    preReqTechIds:       ["precision_fabrication", "automated_processing"],
+    unlocksRecipeIds:    [],
+    unlocksDoodadIds:    [],
+    unlocksSystemFlags:  ["advanced_electronics"],
+  },
+
+  {
+    id:          "industrial_scale",
+    name:        "Industrial Scale",
+    description:
+      "Bulk-throughput logistics and heavy power infrastructure. " +
+      "Combines automated processing with grid mastery to unlock " +
+      "the next tier of factory expansion — larger machines, higher densities.",
+    cost:                70,
+    tier:                3,
+    preReqTechIds:       ["automated_processing", "grid_expansion"],
+    unlocksRecipeIds:    [],
+    unlocksDoodadIds:    [],
+    unlocksSystemFlags:  ["industrial_scale"],
   },
 ];

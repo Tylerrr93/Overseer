@@ -140,13 +140,14 @@ export const DOODADS: DoodadDef[] = [
     ports: [
       { dx: 0, dy: 0, dir: "S", role: "output" },
     ],
-    machineTag:    "extractor_iron",
-    interactable:  true,
-    powerDraw:     0,
+    machineTag:     "extractor_iron",
+    interactable:   true,
+    powerDraw:      0,
     tickIntervalMs: 2000,
-    texture:       "assets/extractor_1.png",
-    buildTimeMs:   3000,
-    isStarter:     true,
+    fuelEveryNTicks: 3,   // 1 coal per 6 s instead of every 2 s
+    texture:        "assets/extractor_1.png",
+    buildTimeMs:    3000,
+    isStarter:      true,
     cost: [
       { itemId: "scrap_metal", qty: 4 },
       { itemId: "coal",        qty: 1 },
@@ -168,15 +169,16 @@ export const DOODADS: DoodadDef[] = [
     ports: [
       { dx: 0, dy: 0, dir: "S", role: "output" },
     ],
-    machineTag:    "extractor_coal",
-    interactable:  true,
-    powerDraw:     20,
-    tickIntervalMs: 2000,
+    machineTag:      "extractor_coal",
+    interactable:    true,
+    powerDraw:       20,
+    tickIntervalMs:  2000,
+    fuelEveryNTicks: 2,   // off-grid: 1 coal per 4 s — net positive when manually seeded
     animations: {
       idle:   ["assets/coal_extractor_idle.png"],
       active: ["assets/coal_extractor_1.png", "assets/coal_extractor_2.png"],
     },
-    buildTimeMs: 10000,
+    buildTimeMs: 4000,
     isStarter:   true,
     cost: [
       { itemId: "scrap_metal", qty: 5 },
@@ -291,6 +293,82 @@ export const DOODADS: DoodadDef[] = [
     isStarter:    true,
     cost: [
       { itemId: "scrap_metal", qty: 6 },
+    ],
+  },
+
+  // ── Copper Extractor (1×1) ───────────────────────────────
+  //  Unlocked by: Tech — Copper Extraction
+  {
+    id:          "copper_extractor",
+    name:        "Copper Extractor",
+    description: "Drills copper ore from a copper vein. Requires coal as fuel — load via F. Output port faces South; rotate with R before placing.",
+    sprite:      "#b86020",
+    footprint:   { w: 1, h: 1 },
+    slots: [
+      { role: "fuel",   filter: ["fuel"], capacity: 50 },
+      { role: "output", capacity: 100 },
+    ],
+    ports: [
+      { dx: 0, dy: 0, dir: "S", role: "output" },
+    ],
+    machineTag:      "extractor_copper",
+    interactable:    true,
+    powerDraw:       0,
+    tickIntervalMs:  2000,
+    fuelEveryNTicks: 3,   // 1 coal per 6 s
+    buildTimeMs:     3000,
+    // Not isStarter — locked behind copper_extraction tech
+    cost: [
+      { itemId: "scrap_metal", qty: 5 },
+      { itemId: "copper_ore",  qty: 2 },
+    ],
+  },
+
+  // ── Power Relay (1×1) ────────────────────────────────────
+  //  Extended-range power node.
+  //  Unlocked by: Tech — Grid Optimization
+  {
+    id:           "power_relay",
+    name:         "Power Relay",
+    description:  "High-range power distribution node. Connects to other nodes within 10 tiles; powers machines within 7 tiles. Ideal for spreading the grid over large areas.",
+    sprite:       "#aaaa22",
+    footprint:    { w: 1, h: 1 },
+    slots:        [],
+    ports:        [],
+    powerDraw:    0,
+    powerRadius:  7,
+    connectRadius: 10,
+    interactable: false,
+    buildTimeMs:  2000,
+    // Not isStarter — locked behind grid_optimization tech
+    cost: [
+      { itemId: "scrap_metal", qty: 4 },
+      { itemId: "copper_wire", qty: 2 },
+      { itemId: "iron_plate",  qty: 1 },
+    ],
+  },
+
+  // ── Substation (2×2) ─────────────────────────────────────
+  //  Large-area power hub; backbone of an expanded grid.
+  //  Unlocked by: Tech — Grid Expansion
+  {
+    id:           "substation",
+    name:         "Substation",
+    description:  "Backbone power hub. Connects to nodes within 16 tiles; powers machines within 12 tiles. Place one to anchor each factory district.",
+    sprite:       "#cccc33",
+    footprint:    { w: 2, h: 2 },
+    slots:        [],
+    ports:        [],
+    powerDraw:    0,
+    powerRadius:  12,
+    connectRadius: 16,
+    interactable: false,
+    buildTimeMs:  5000,
+    // Not isStarter — locked behind grid_expansion tech
+    cost: [
+      { itemId: "scrap_metal", qty: 6 },
+      { itemId: "iron_plate",  qty: 4 },
+      { itemId: "copper_wire", qty: 4 },
     ],
   },
 

@@ -120,6 +120,11 @@ export interface PlayerState {
   cursorMode:        CursorMode;
   /** Non-null while the player is holding down a manual harvest. */
   harvestProgress:   HarvestProgress | null;
+  /**
+   * When true, hovering over a world feature shows its remaining yield count.
+   * Toggled by the Inspect button on the action bar.  Not persisted.
+   */
+  inspectMode:       boolean;
 }
 
 // ── Root Game State ───────────────────────────────────────────

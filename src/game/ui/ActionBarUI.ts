@@ -247,6 +247,7 @@ export class ActionBarUI {
   private buildBtn!:      HTMLButtonElement;
   private systemBtn!:     HTMLButtonElement;
   private techBtn!:       HTMLButtonElement;
+  private inspectBtn!:    HTMLButtonElement;
 
   setInventoryPanel(panel: UIPanel): void { this.inventoryPanel = panel; }
   setBuildPanel(panel: UIPanel):     void { this.buildPanel     = panel; }
@@ -271,6 +272,7 @@ export class ActionBarUI {
     this.buildPowerButton();
     this.buildUIButtons();
     this.buildTechButton();
+    this.buildInspectButton();
     this.buildSystemButton();
     this.bindKeys();
   }
@@ -299,6 +301,20 @@ export class ActionBarUI {
     this.techBtn.textContent = "◬";
     this.techBtn.addEventListener("click", () => this.techPanel?.toggle());
     this.el.appendChild(this.techBtn);
+  }
+
+  // ── Inspect button ────────────────────────────────────────
+
+  private buildInspectButton(): void {
+    this.inspectBtn = document.createElement("button");
+    this.inspectBtn.className = "ab-icon-btn";
+    this.inspectBtn.style.marginLeft = "var(--gap-sm)";
+    this.inspectBtn.title = "Inspect [I] — hover over a resource node to see remaining yield";
+    this.inspectBtn.textContent = "🔍";
+    this.inspectBtn.addEventListener("click", () => {
+      sm.state.player.inspectMode = !sm.state.player.inspectMode;
+    });
+    this.el.appendChild(this.inspectBtn);
   }
 
   // ── System / settings button ──────────────────────────────
@@ -530,6 +546,11 @@ export class ActionBarUI {
         case "0": this.selectSlot(9); break;
         case "Escape":
           this.deselect();
+          sm.state.player.inspectMode = false;
+          break;
+        case "i":
+        case "I":
+          sm.state.player.inspectMode = !sm.state.player.inspectMode;
           break;
       }
     });
@@ -562,10 +583,11 @@ export class ActionBarUI {
 
     // Keep all UI shortcut buttons in sync with their panel's open state.
     // Polled every frame so ESC / external closes are always reflected.
-    this.invBtn?.classList.toggle("active",    this.inventoryPanel?.isCurrentlyOpen() ?? false);
-    this.buildBtn?.classList.toggle("active",  this.buildPanel?.isCurrentlyOpen()     ?? false);
-    this.techBtn?.classList.toggle("active",   this.techPanel?.isCurrentlyOpen()      ?? false);
-    this.systemBtn?.classList.toggle("active", this.systemPanel?.isCurrentlyOpen()    ?? false);
-    this.powerBtn?.classList.toggle("active",  this.powerPanel?.isCurrentlyOpen()     ?? false);
+    this.invBtn?.classList.toggle("active",     this.inventoryPanel?.isCurrentlyOpen() ?? false);
+    this.buildBtn?.classList.toggle("active",   this.buildPanel?.isCurrentlyOpen()     ?? false);
+    this.techBtn?.classList.toggle("active",    this.techPanel?.isCurrentlyOpen()      ?? false);
+    this.systemBtn?.classList.toggle("active",  this.systemPanel?.isCurrentlyOpen()    ?? false);
+    this.powerBtn?.classList.toggle("active",   this.powerPanel?.isCurrentlyOpen()     ?? false);
+    this.inspectBtn?.classList.toggle("active", sm.state.player.inspectMode            ?? false);
   }
 }
