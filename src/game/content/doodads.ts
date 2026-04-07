@@ -35,6 +35,10 @@ export const DOODADS: DoodadDef[] = [
     name:        "Basic Smelter",
     description: "Coal-fired ore furnace. The first step towards automation.",
     sprite:      "#6a2a0a",
+    animations: {
+      idle:   ["assets/basic_smelter_idle.png"],
+      active: ["assets/basic_smelter_1.png", "assets/basic_smelter_2.png", "assets/basic_smelter_3.png"],
+    },
     footprint:   { w: 2, h: 2 },
     slots: [
       { role: "input",  filter: ["ore"], capacity: 100 },

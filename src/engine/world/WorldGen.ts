@@ -11,7 +11,7 @@
 //      only knows them via the Registry so the engine boundary holds.
 // ============================================================
 
-import type { Chunk, Tile, TileType, FeatureState } from "@t/state";
+import type { Chunk, Tile, FeatureState } from "@t/state";
 import { GameConfig } from "@engine/core/GameConfig";
 import { registry }   from "@engine/core/Registry";
 import { sm }         from "@engine/core/StateManager";
@@ -115,10 +115,7 @@ function generateFeatures(
   cy: number,
   seed: number,
 ): Record<string, FeatureState> {
-  const CS       = GameConfig.CHUNK_SIZE;
-  const sparsity = GameConfig.RESOURCE_SPARSITY;
-  const cluster  = GameConfig.RESOURCE_CLUSTER_SIZE;
-  const baseYield = GameConfig.RESOURCE_BASE_YIELD;
+  const CS = GameConfig.CHUNK_SIZE;
 
   const features: Record<string, FeatureState> = {};
 
@@ -133,6 +130,9 @@ function generateFeatures(
       const wy = cy * CS + ly;
 
       for (const def of featureDefs) {
+        const sparsity = def.sparsity;
+        const cluster  = def.clusterSize;
+
         // Each feature uses a unique noise seed derived from its id hash
         // so different resource types never perfectly overlap.
         const fSeed = (seed ^ strHash(def.id)) >>> 0;
@@ -174,8 +174,9 @@ function generateFeatures(
             const key = `${nlx},${nly}`;
             if (features[key]) continue;
 
+            // Yield varies ±30% around the def's baseYield
             const yield_ = def.infinite ? 0 : Math.round(
-              baseYield * (0.7 + 0.6 * hashCoord(seed, wx + dx, wy + dy)),
+              def.baseYield * (0.7 + 0.6 * hashCoord(seed, wx + dx, wy + dy)),
             );
 
             features[key] = { featureId: def.id, remainingYield: yield_ };

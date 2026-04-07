@@ -51,14 +51,33 @@ export interface DoodadPort {
 export interface FeatureDef {
   id:           string;
   name:         string;
-  /** Hex colour string (e.g. "#7a4a3a") used by the renderer as a placeholder sprite. */
+  /** Hex colour string (e.g. "#7a4a3a") used as a fallback when no texture is loaded. */
   sprite:       string;
+  /** Static PNG path (e.g. "assets/iron_vein.png"). Takes priority over sprite colour. */
+  texture?:     string;
+  /**
+   * Animation frame paths keyed by state name.
+   * The "idle" key is used for looping playback.
+   * Takes priority over texture and sprite.
+   * Example: { idle: ["assets/coal_seam_1.png", "assets/coal_seam_2.png"] }
+   */
+  animations?:  Record<string, string[]>;
   /** The item this feature yields when extracted. */
   yieldsItemId: string;
   /** Starting quantity when the feature is generated. Ignored when infinite. */
   baseYield:    number;
   /** If true, remainingYield never decrements — effectively infinite. */
   infinite?:    boolean;
+  /**
+   * Noise threshold above which this feature spawns (0–1, higher = sparser).
+   * ~8% tile coverage at 0.92; ~20% coverage at 0.80.
+   */
+  sparsity:    number;
+  /**
+   * Tile radius around a noise peak that belongs to this deposit cluster.
+   * Larger values create bigger, denser patches.
+   */
+  clusterSize: number;
   /**
    * machineTag of the extractor doodad that can mine this feature.
    * Leave undefined to allow any extractor.
@@ -69,6 +88,26 @@ export interface FeatureDef {
    * one unit from this feature.  Defaults to 3000ms if omitted.
    */
   harvestTimeMs?: number;
+}
+
+export interface TerrainDef {
+  id:    string;
+  name:  string;
+  /** Hex colour fallback used in the chunk colour-bake (e.g. "#1e1e14"). */
+  sprite: string;
+  /**
+   * Static PNG path tiled over this terrain type.
+   * Rendered in tileDetailLayer (above the colour bake).
+   * Falls back to sprite colour if not loaded yet.
+   */
+  texture?:    string;
+  /**
+   * Animation frame paths keyed by state name.
+   * The "idle" key is used for looping playback.
+   * Takes priority over texture.
+   * Example: { idle: ["assets/ground_1.png", "assets/ground_2.png"] }
+   */
+  animations?: Record<string, string[]>;
 }
 
 // ── Tech tree ─────────────────────────────────────────────────

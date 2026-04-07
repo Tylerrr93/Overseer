@@ -29,18 +29,6 @@ export const GameConfig = Object.freeze({
 
   // Resource generation (Bobiverse post-apocalyptic scarcity)
   /**
-   * Noise threshold above which a feature is considered present.
-   * Higher = sparser. Range 0–1; 0.92 gives ~8% coverage before cluster check.
-   */
-  RESOURCE_SPARSITY:          0.92,
-  /**
-   * Maximum tile radius around a noise peak that remains part of the
-   * same deposit cluster. Larger = bigger patches.
-   */
-  RESOURCE_CLUSTER_SIZE:      3,
-  /** Starting yield for a finite resource feature node. */
-  RESOURCE_BASE_YIELD:        400,
-  /**
    * When true, extractors consume remainingYield each cycle and destroy
    * the feature when it reaches 0.  When false, features are infinite.
    */

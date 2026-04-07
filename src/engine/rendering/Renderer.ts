@@ -23,9 +23,16 @@
 //           idle:   ["assets/my_machine_idle.png"],
 //           active: ["assets/my_machine_a1.png", "assets/my_machine_a2.png"],
 //         }
+//
+//  Adding a texture to a feature or terrain tile:
+//    Same pattern — add texture/animations to FeatureDef or TerrainDef.
+//    Features: rendered as a full-tile Sprite/AnimatedSprite in featureLayer.
+//    Terrain:  rendered as a full-tile Sprite/AnimatedSprite in tileDetailLayer
+//              on top of the colour-baked chunk (colour bake is always the fallback).
+//
 //    The renderer resolves keys through PIXI.Assets; if the asset
 //    is not loaded yet, it falls back to the hex-colour placeholder
-//    automatically — you can add art one doodad at a time.
+//    automatically — you can add art one type at a time.
 // ============================================================
 
 import * as PIXI from "pixi.js";
@@ -54,19 +61,9 @@ export interface IPowerSystem {
 const T  = GameConfig.TILE_SIZE;
 const CS = GameConfig.CHUNK_SIZE;
 
-const TILE_COLOR: Record<string, number> = {
-  void:        0x0a0a0a,
-  ground:      0x1e1e14,
-  rubble:      0x2e2820,
-  rock:        0x1a1a1a,
-  irradiated:  0x1a240a,
-  water:       0x0d2a3d,
-  organic:     0x1a2a0d,
-  // Legacy ore tile types — rendered as ground-equivalent if somehow present
-  ore_iron:    0x1e1e14,
-  ore_copper:  0x1e1e14,
-  ore_coal:    0x1e1e14,
-};
+// Tile colours are now sourced from TerrainDef.sprite via the registry.
+// This constant is kept only as an emergency fallback for unknown tile types.
+const TILE_COLOR_FALLBACK = 0xff00ff;
 
 const PORT_OUT  = 0x00ff64;
 const PORT_IN   = 0x50a0ff;
@@ -105,9 +102,10 @@ export class Renderer {
   private showPowerGrid = false;
 
   // ── Layers ────────────────────────────────────────────────
-  private worldContainer!: PIXI.Container;
-  private tileLayer!:       PIXI.Container;
-  private featureLayer!:    PIXI.Container;  // resource nodes — above tiles, below belts
+  private worldContainer!:   PIXI.Container;
+  private tileLayer!:        PIXI.Container;
+  private tileDetailLayer!:  PIXI.Container;  // textured/animated terrain — above colour bake
+  private featureLayer!:     PIXI.Container;  // resource nodes — above tiles, below belts
   private beltLayer!:       PIXI.Container;
   private doodadLayer!:     PIXI.Container;
   private itemLayer!:       PIXI.Container;
@@ -128,11 +126,21 @@ export class Renderer {
   private seenChunks   = new Set<string>();
   private chunkSprites = new Map<string, PIXI.Sprite>();
 
+  // ── Tile detail sync (textured/animated terrain) ──────────
+  /** "tx,ty" → per-tile Sprite or AnimatedSprite in tileDetailLayer */
+  private tileDetailSprites   = new Map<string, PIXI.Sprite | PIXI.AnimatedSprite>();
+  /** chunk key → processed flag; cleared when a terrain texture invalidates the chunk */
+  private seenDetailChunks    = new Set<string>();
+  /** texture path → set of "tx,ty" keys that use it (for fast invalidation) */
+  private tileDetailByTexture = new Map<string, Set<string>>();
+
   // ── Feature sync ──────────────────────────────────────────
-  /** "tx,ty" → feature sprite — cleared when feature is depleted */
-  private featureSprites  = new Map<string, PIXI.Graphics>();
+  /** "tx,ty" → Container holding the visual (Graphics, Sprite, or AnimatedSprite) */
+  private featureSprites  = new Map<string, PIXI.Container>();
   /** "tx,ty" → remaining-yield text label (finite features only) */
   private featureLabels   = new Map<string, PIXI.Text>();
+  /** "tx,ty" → featureId (for texture invalidation lookups) */
+  private featureDefIds   = new Map<string, string>();
 
   // ── Doodad sync ───────────────────────────────────────────
   /** doodadId → Container(body + border + label) */
@@ -179,17 +187,18 @@ export class Renderer {
     this.worldContainer = new PIXI.Container();
     this.app.stage.addChild(this.worldContainer);
 
-    this.tileLayer    = new PIXI.Container();
-    this.featureLayer = new PIXI.Container();
-    this.beltLayer    = new PIXI.Container();
-    this.doodadLayer  = new PIXI.Container();
-    this.itemLayer    = new PIXI.Container();
-    this.entityLayer  = new PIXI.Container();
-    this.overlayLayer = new PIXI.Container();
+    this.tileLayer       = new PIXI.Container();
+    this.tileDetailLayer = new PIXI.Container();
+    this.featureLayer    = new PIXI.Container();
+    this.beltLayer       = new PIXI.Container();
+    this.doodadLayer     = new PIXI.Container();
+    this.itemLayer       = new PIXI.Container();
+    this.entityLayer     = new PIXI.Container();
+    this.overlayLayer    = new PIXI.Container();
 
     for (const layer of [
-      this.tileLayer, this.featureLayer, this.beltLayer, this.doodadLayer,
-      this.itemLayer, this.entityLayer, this.overlayLayer,
+      this.tileLayer, this.tileDetailLayer, this.featureLayer, this.beltLayer,
+      this.doodadLayer, this.itemLayer, this.entityLayer, this.overlayLayer,
     ]) this.worldContainer.addChild(layer);
 
     // Overlay and player are persistent Graphics; overlayGfx clears every frame.
@@ -247,6 +256,7 @@ export class Renderer {
 
     // Sync persistent scene objects
     this.syncTiles();
+    this.syncTileDetails();
     this.syncFeatures();
     this.syncBelts();
     this.syncDoodads();
@@ -297,7 +307,11 @@ export class Renderer {
         for (let tx = 0; tx < CS; tx++) {
           const tile = chunk.tiles[ty]?.[tx];
           if (!tile) continue;
-          gfx.rect(tx * T, ty * T, T, T).fill(TILE_COLOR[tile.type] ?? 0xff00ff);
+          const terrainDef = registry.findTerrain(tile.type);
+          const color = terrainDef?.sprite
+            ? hexToNum(terrainDef.sprite)
+            : TILE_COLOR_FALLBACK;
+          gfx.rect(tx * T, ty * T, T, T).fill(color);
         }
       }
       const rt = this.app.renderer.generateTexture({
@@ -314,10 +328,104 @@ export class Renderer {
     }
   }
 
+  // ── Tile detail sync ─────────────────────────────────────
+  //  Per-tile Sprite or AnimatedSprite for terrain types that have a
+  //  texture or animation defined.  Rendered above the colour-baked
+  //  chunk sprites so they visually replace (or overlay) the flat colour.
+  //  Terrain tiles are static after world-gen, so each chunk is processed
+  //  once and skipped on subsequent frames (seenDetailChunks).
+
+  private syncTileDetails(): void {
+    for (const [key, chunk] of Object.entries(sm.state.chunks)) {
+      if (!chunk.generated || this.seenDetailChunks.has(key)) continue;
+      this.seenDetailChunks.add(key);
+
+      for (let ly = 0; ly < CS; ly++) {
+        for (let lx = 0; lx < CS; lx++) {
+          const tile = chunk.tiles[ly]?.[lx];
+          if (!tile) continue;
+
+          const def = registry.findTerrain(tile.type);
+          if (!def || (!def.texture && !def.animations)) continue;
+
+          const tx = chunk.cx * CS + lx;
+          const ty = chunk.cy * CS + ly;
+          const worldKey = `${tx},${ty}`;
+
+          let visual: PIXI.Sprite | PIXI.AnimatedSprite;
+
+          if (def.animations) {
+            const frameKeys = def.animations["idle"] ?? Object.values(def.animations)[0] ?? [def.texture ?? def.sprite];
+            const frames = frameKeys.map(k => this.resolveTexture(k, T, T));
+            const anim = new PIXI.AnimatedSprite(frames);
+            anim.animationSpeed = 0.08;
+            anim.loop = true;
+            anim.play();
+            anim.width  = T;
+            anim.height = T;
+            visual = anim;
+            // Track for invalidation
+            for (const k of frameKeys) {
+              if (!this.tileDetailByTexture.has(k)) this.tileDetailByTexture.set(k, new Set());
+              this.tileDetailByTexture.get(k)!.add(worldKey);
+            }
+          } else {
+            // def.texture is guaranteed non-null here
+            const tex = this.resolveTexture(def.texture!, T, T);
+            visual = new PIXI.Sprite(tex);
+            visual.width  = T;
+            visual.height = T;
+            if (!this.tileDetailByTexture.has(def.texture!)) this.tileDetailByTexture.set(def.texture!, new Set());
+            this.tileDetailByTexture.get(def.texture!)!.add(worldKey);
+          }
+
+          visual.x = tx * T;
+          visual.y = ty * T;
+          this.tileDetailLayer.addChild(visual);
+          this.tileDetailSprites.set(worldKey, visual);
+        }
+      }
+    }
+  }
+
+  /**
+   * Called when a terrain texture PNG finishes loading.
+   * Removes tile detail sprites that were built with the placeholder so
+   * syncTileDetails() will rebuild them next frame with the real texture.
+   */
+  private invalidateTileDetailsByTexture(textureKey: string): void {
+    const affected = this.tileDetailByTexture.get(textureKey);
+    if (!affected || affected.size === 0) return;
+
+    for (const worldKey of affected) {
+      const sprite = this.tileDetailSprites.get(worldKey);
+      if (sprite) {
+        this.tileDetailLayer.removeChild(sprite);
+        sprite.destroy({ texture: false });
+        this.tileDetailSprites.delete(worldKey);
+      }
+    }
+    // Clear tracking so the affected tiles can be re-registered on rebuild
+    this.tileDetailByTexture.delete(textureKey);
+
+    // Clear the seenDetailChunks flag for any chunk that contained these tiles
+    // so syncTileDetails() re-processes them next frame.
+    for (const worldKey of affected) {
+      const [txStr, tyStr] = worldKey.split(",");
+      const tx = parseInt(txStr!, 10);
+      const ty = parseInt(tyStr!, 10);
+      const cx = Math.floor(tx / CS);
+      const cy = Math.floor(ty / CS);
+      this.seenDetailChunks.delete(`${cx},${cy}`);
+    }
+  }
+
   // ── Feature sync ──────────────────────────────────────────
-  //  One Graphics square per live feature, keyed by world tile "tx,ty".
+  //  One Container per live feature, keyed by world tile "tx,ty".
+  //  The Container holds a Graphics (colour-only), Sprite (texture),
+  //  or AnimatedSprite depending on the FeatureDef.
   //  When a feature is depleted and removed from chunk.features, its
-  //  sprite is destroyed here on the next frame.
+  //  container is destroyed here on the next frame.
 
   private syncFeatures(): void {
     // Build the full set of live feature keys this frame
@@ -342,21 +450,43 @@ export class Renderer {
         const featureDef = registry.findFeature(fs.featureId);
 
         if (!this.featureSprites.has(worldKey)) {
-          // Resolve the sprite colour from the FeatureDef
-          const color = featureDef?.sprite.startsWith("#")
-            ? hexToNum(featureDef.sprite)
-            : 0x888866;
+          const container = new PIXI.Container();
+          container.x = tx * T;
+          container.y = ty * T;
 
-          const gfx = new PIXI.Graphics();
-          // Draw an inset filled square with a bright border to stand out from terrain
-          const inset = 4;
-          gfx.rect(inset, inset, T - inset * 2, T - inset * 2).fill({ color, alpha: 0.92 });
-          gfx.rect(inset, inset, T - inset * 2, T - inset * 2)
-             .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
-          gfx.x = tx * T;
-          gfx.y = ty * T;
-          this.featureLayer.addChild(gfx);
-          this.featureSprites.set(worldKey, gfx);
+          if (featureDef?.animations) {
+            // Animated feature
+            const frameKeys = featureDef.animations["idle"] ?? Object.values(featureDef.animations)[0] ?? [featureDef.texture ?? featureDef.sprite];
+            const frames = frameKeys.map(k => this.resolveTexture(k, T, T));
+            const anim = new PIXI.AnimatedSprite(frames);
+            anim.animationSpeed = 0.08;
+            anim.loop = true;
+            anim.play();
+            anim.width  = T;
+            anim.height = T;
+            container.addChild(anim);
+          } else if (featureDef?.texture) {
+            // Static texture
+            const sprite = new PIXI.Sprite(this.resolveTexture(featureDef.texture, T, T));
+            sprite.width  = T;
+            sprite.height = T;
+            container.addChild(sprite);
+          } else {
+            // Colour fallback — inset square with border
+            const color = featureDef?.sprite.startsWith("#")
+              ? hexToNum(featureDef.sprite)
+              : 0x888866;
+            const gfx   = new PIXI.Graphics();
+            const inset  = 4;
+            gfx.rect(inset, inset, T - inset * 2, T - inset * 2).fill({ color, alpha: 0.92 });
+            gfx.rect(inset, inset, T - inset * 2, T - inset * 2)
+               .stroke({ color: 0xffffff, width: 1, alpha: 0.25 });
+            container.addChild(gfx);
+          }
+
+          this.featureLayer.addChild(container);
+          this.featureSprites.set(worldKey, container);
+          if (featureDef) this.featureDefIds.set(worldKey, featureDef.id);
 
           // Yield label — created hidden; only shown when inspecting this tile
           if (!featureDef?.infinite) {
@@ -364,19 +494,19 @@ export class Renderer {
               text:  String(fs.remainingYield),
               style: { fill: "#88ff88", fontFamily: "monospace", fontSize: 9, fontWeight: "bold" },
             });
-            label.x = tx * T + 3;
-            label.y = ty * T + T - 13;
+            label.x = 3;
+            label.y = T - 13;
             label.visible = false;
-            this.featureLayer.addChild(label);
+            container.addChild(label);
             this.featureLabels.set(worldKey, label);
           }
         }
 
         // Update depletion alpha every frame for finite features
         if (!featureDef?.infinite && featureDef) {
-          const ratio = fs.remainingYield / featureDef.baseYield;
-          const gfx   = this.featureSprites.get(worldKey);
-          if (gfx) gfx.alpha = 0.35 + ratio * 0.65; // 0.35 (near-empty) → 1.0 (full)
+          const ratio     = fs.remainingYield / featureDef.baseYield;
+          const container = this.featureSprites.get(worldKey);
+          if (container) container.alpha = 0.35 + ratio * 0.65; // 0.35 (near-empty) → 1.0 (full)
 
           // Label: only show when in inspect mode and cursor is on this exact tile
           const label = this.featureLabels.get(worldKey);
@@ -395,19 +525,14 @@ export class Renderer {
       }
     }
 
-    // Remove sprites and labels whose features have been depleted
-    for (const [key, gfx] of this.featureSprites) {
+    // Remove containers whose features have been depleted
+    for (const [key, container] of this.featureSprites) {
       if (!live.has(key)) {
-        this.featureLayer.removeChild(gfx);
-        gfx.destroy();
+        this.featureLayer.removeChild(container);
+        container.destroy({ children: true, texture: false });
         this.featureSprites.delete(key);
-
-        const label = this.featureLabels.get(key);
-        if (label) {
-          this.featureLayer.removeChild(label);
-          label.destroy();
-          this.featureLabels.delete(key);
-        }
+        this.featureLabels.delete(key);  // label was a child of container — already destroyed
+        this.featureDefIds.delete(key);
       }
     }
   }
@@ -1021,8 +1146,10 @@ export class Renderer {
       PIXI.Assets.load<PIXI.Texture>(key)
         .then(() => {
           this.pendingLoads.delete(key);
-          // Rebuild any doodad containers that were using the placeholder
+          // Rebuild anything that was using the placeholder for this texture
           this.invalidateDoodadsByTexture(key);
+          this.invalidateFeaturesByTexture(key);
+          this.invalidateTileDetailsByTexture(key);
         })
         .catch(() => {
           this.pendingLoads.delete(key);
@@ -1032,6 +1159,32 @@ export class Renderer {
 
     // Return placeholder until load resolves
     return this.getPlaceholderTexture("#555555", w, h);
+  }
+
+  /**
+   * Destroys and removes feature containers that were built using `textureKey`
+   * as a placeholder.  syncFeatures() will recreate them with the real texture.
+   */
+  private invalidateFeaturesByTexture(textureKey: string): void {
+    for (const [worldKey, container] of this.featureSprites) {
+      const featureId = this.featureDefIds.get(worldKey);
+      if (!featureId) continue;
+      const def = registry.findFeature(featureId);
+      if (!def) continue;
+
+      const usesKey =
+        def.texture === textureKey ||
+        def.sprite  === textureKey ||
+        Object.values(def.animations ?? {}).flat().includes(textureKey);
+
+      if (usesKey) {
+        this.featureLayer.removeChild(container);
+        container.destroy({ children: true, texture: false });
+        this.featureSprites.delete(worldKey);
+        this.featureLabels.delete(worldKey);
+        this.featureDefIds.delete(worldKey);
+      }
+    }
   }
 
   /**
