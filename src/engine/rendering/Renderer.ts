@@ -81,8 +81,10 @@ function rotatedFP(w: number, h: number, rot: number) {
 
 /** AnimatedSprite extended with frame arrays for state-switching. */
 interface DoodadAnimSprite extends PIXI.AnimatedSprite {
-  _idleFrames:   PIXI.Texture[];
-  _activeFrames: PIXI.Texture[];
+  _idleFrames:      PIXI.Texture[];
+  _activeFrames:    PIXI.Texture[];
+  _poweredFrames:   PIXI.Texture[] | null;
+  _unpoweredFrames: PIXI.Texture[] | null;
 }
 
 // ── Renderer ─────────────────────────────────────────────────
@@ -662,9 +664,16 @@ export class Renderer {
       const idleFrames   = idleKeys.map(k => this.resolveTexture(k, origW - 4, origH - 4));
       const activeFrames = activeKeys.map(k => this.resolveTexture(k, origW - 4, origH - 4));
 
+      const poweredKeys   = def.animations["powered"];
+      const unpoweredKeys = def.animations["unpowered"];
+      const poweredFrames   = poweredKeys   ? poweredKeys.map(k => this.resolveTexture(k, origW - 4, origH - 4))   : null;
+      const unpoweredFrames = unpoweredKeys ? unpoweredKeys.map(k => this.resolveTexture(k, origW - 4, origH - 4)) : null;
+
       const anim = new PIXI.AnimatedSprite(idleFrames) as DoodadAnimSprite;
-      anim._idleFrames   = idleFrames;
-      anim._activeFrames = activeFrames;
+      anim._idleFrames      = idleFrames;
+      anim._activeFrames    = activeFrames;
+      anim._poweredFrames   = poweredFrames;
+      anim._unpoweredFrames = unpoweredFrames;
       anim.animationSpeed = 0.08;
       anim.loop = true;
       anim.gotoAndStop(0);
@@ -731,7 +740,20 @@ export class Renderer {
       doodad.crafting !== null ||
       (doodad.fuelBurn !== null && (doodad.fuelBurn?.remainingMs ?? 0) > 0) ||
       extractorActive;
-    const newState  = isActive ? "active" : "idle";
+
+    // State priority: unpowered > active > powered > idle
+    // "unpowered" and "powered" keys are optional — only used when defined on the doodad.
+    let newState: string;
+    if (!doodad.powered && def.animations?.["unpowered"]) {
+      newState = "unpowered";
+    } else if (isActive) {
+      newState = "active";
+    } else if (doodad.powered && def.animations?.["powered"]) {
+      newState = "powered";
+    } else {
+      newState = "idle";
+    }
+
     if (this.doodadAnimState.get(id) === newState) return;
     this.doodadAnimState.set(id, newState);
 
@@ -741,7 +763,12 @@ export class Renderer {
 
     if (!body || !("_idleFrames" in body)) return;
 
-    const frames = newState === "active" ? body._activeFrames : body._idleFrames;
+    let frames: PIXI.Texture[];
+    if      (newState === "unpowered" && body._unpoweredFrames) frames = body._unpoweredFrames;
+    else if (newState === "active")                             frames = body._activeFrames;
+    else if (newState === "powered"   && body._poweredFrames)  frames = body._poweredFrames;
+    else                                                        frames = body._idleFrames;
+
     body.textures = frames;
     if (frames.length > 1) body.play();
     else body.gotoAndStop(0);

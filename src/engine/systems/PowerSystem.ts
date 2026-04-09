@@ -79,19 +79,27 @@ export class PowerSystem {
     // ── Separate doodad types ──────────────────────────────
 
     const nodes      = allDoodads.filter(d => {
+      if (d.construction) return false;
       const def = registry.findDoodad(d.defId);
       return def && (def.powerRadius ?? 0) > 0;
     });
 
     const generators = allDoodads.filter(d => {
+      if (d.construction) return false;
       const def = registry.findDoodad(d.defId);
       return def && (def.powerGeneration ?? 0) > 0;
     });
 
     const machines   = allDoodads.filter(d => {
+      if (d.construction) return false;
       const def = registry.findDoodad(d.defId);
       return def && def.powerDraw > 0;
     });
+
+    // Under-construction doodads are never powered
+    for (const d of allDoodads) {
+      if (d.construction) d.powered = false;
+    }
 
     if (nodes.length === 0) {
       // No nodes — all machines use fuel fallback
