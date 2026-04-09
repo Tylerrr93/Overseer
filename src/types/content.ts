@@ -145,6 +145,68 @@ export interface TechDef {
   unlocksSystemFlags:  string[];
 }
 
+// ── Structure blueprints ──────────────────────────────────────
+
+/**
+ * One cell in a StructureDef blueprint, at (dx, dy) relative to the
+ * structure's top-left origin tile.
+ */
+export interface StructureTile {
+  /** X offset from the structure origin (0 = leftmost column). */
+  dx: number;
+  /** Y offset from the structure origin (0 = topmost row). */
+  dy: number;
+  /**
+   * Terrain tile type ID to write at this position.
+   * Must match a registered TerrainDef id.
+   * E.g. "ruin_floor", "ruined_wall", "asphalt_cracked".
+   */
+  terrain: string;
+  /**
+   * Optional DoodadDef id to pre-place at this tile.
+   * WorldGen creates a minimal DoodadState for the doodad and marks
+   * all tiles in its footprint as impassable.
+   * Only specify the **origin** tile for multi-tile doodads — leave
+   * the remaining footprint cells as plain floor in the blueprint.
+   */
+  doodadId?: string;
+}
+
+/**
+ * A pre-built structure blueprint placed by WorldGen inside city biomes.
+ * Defines the terrain layout and optional pre-placed doodads for a
+ * named ruined building or installation.
+ *
+ * The engine never hardcodes what a building looks like — it reads
+ * these defs from the Registry and stamps them into chunks.
+ */
+export interface StructureDef {
+  id:     string;
+  name:   string;
+  /** Bounding box width in tiles. */
+  width:  number;
+  /** Bounding box height in tiles. */
+  height: number;
+  /** All tiles that make up the structure, relative to its origin. */
+  tiles:  StructureTile[];
+  /**
+   * Biome tags controlling where this structure can spawn.
+   * "city" = only inside high macroNoise zones (default behaviour).
+   */
+  tags?: string[];
+  /**
+   * Minimum macro-biome noise required for placement (0–1).
+   * Defaults to 0.60 if omitted.  Higher = only in dense city cores.
+   */
+  minCityNoise?: number;
+  /**
+   * When true, at least one tile on the perimeter of the structure
+   * bounding box must already be a road tile for placement to succeed.
+   * Ensures structures sit alongside roads, not in the middle of nowhere.
+   */
+  requiresRoad?: boolean;
+}
+
 export interface DoodadDef {
   id: string; name: string; description: string;
   sprite: string;

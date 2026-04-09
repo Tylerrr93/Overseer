@@ -51,6 +51,43 @@ export const TERRAIN_DEFS: TerrainDef[] = [
     name:   "Organic",
     sprite: "#1a2a0d",
   },
+  // ── Road surfaces ─────────────────────────────────────────────
+  //  Placed by WorldGen's ridge-noise road pass.
+  //  Passability is always true — these are traversable surfaces.
+  {
+    id:     "asphalt_clean",
+    name:   "Asphalt",
+    sprite: "#1a1a1a",
+    // texture: "assets/asphalt_clean.png",
+  },
+  {
+    id:     "asphalt_cracked",
+    name:   "Cracked Asphalt",
+    sprite: "#1e1c18",
+    // texture: "assets/asphalt_cracked.png",
+  },
+  {
+    id:     "highway_line",
+    name:   "Highway",
+    sprite: "#202018",
+    // texture: "assets/highway_line.png",
+  },
+
+  // ── Ruin interiors ────────────────────────────────────────────
+  //  Placed by WorldGen's structure blueprint pass.
+  {
+    id:     "ruin_floor",
+    name:   "Ruin Floor",
+    sprite: "#2a2520",
+    // texture: "assets/ruin_floor.png",
+  },
+  {
+    id:     "ruined_wall",
+    name:   "Ruined Wall",
+    sprite: "#1e1a16",
+    // texture: "assets/ruined_wall.png",
+  },
+
   // ── Legacy ore tile types (save compatibility only) ──────────
   { id: "ore_iron",   name: "Iron Ore",   sprite: "#1e1e14" },
   { id: "ore_copper", name: "Copper Ore", sprite: "#1e1e14" },

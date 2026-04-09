@@ -376,6 +376,52 @@ export const DOODADS: DoodadDef[] = [
     ],
   },
 
+  // ── Ruined Fabricator (2×2) — world-gen placed only ────────
+  //  Pre-collapse automated assembler, stripped and collapsed.
+  //  Cannot be built by the player.  Placed by WorldGen inside
+  //  ruined factory structures.  Deconstruct (hold LMB in
+  //  Deconstruct mode) to salvage gears, circuits, and scrap.
+  {
+    id:          "ruined_fabricator",
+    name:        "Ruined Fabricator",
+    description: "A collapsed factory assembler, mostly stripped for parts. Deconstruct it carefully to recover salvageable components.",
+    sprite:      "#2a2a3a",
+    footprint:   { w: 2, h: 2 },
+    slots:       [],
+    ports:       [],
+    powerDraw:   0,
+    interactable: false,
+    deconstructTimeMs: 8000,
+    // cost is the full salvage yield (refundFraction: 1.0)
+    cost: [
+      { itemId: "gear",          qty: 2 },
+      { itemId: "circuit_board", qty: 1 },
+      { itemId: "scrap_metal",   qty: 6 },
+    ],
+    refundFraction: 1.0,
+  },
+
+  // ── Rusted Storage Tank (1×1) — world-gen placed only ───────
+  //  Corroded industrial drum found inside abandoned depots.
+  //  Deconstruct to recover raw ore and scrap.
+  {
+    id:          "rusted_storage",
+    name:        "Rusted Storage Tank",
+    description: "A corroded industrial storage drum. Still holds trace materials inside — deconstruct it to recover them.",
+    sprite:      "#5a3820",
+    footprint:   { w: 1, h: 1 },
+    slots:       [],
+    ports:       [],
+    powerDraw:   0,
+    interactable: false,
+    deconstructTimeMs: 4000,
+    cost: [
+      { itemId: "iron_ore",    qty: 3 },
+      { itemId: "scrap_metal", qty: 4 },
+    ],
+    refundFraction: 1.0,
+  },
+
   // ── AMI Uplink Node (2×2) ────────────────────────────────
   //  The infinite resource sink.  Consumes physical items + grid
   //  power; outputs RAM units (virtual) that are added directly

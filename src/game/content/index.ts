@@ -15,6 +15,7 @@ import { DOODADS }       from "./doodads";
 import { FEATURES }      from "./features";
 import { TECHS }         from "./techs";
 import { TERRAIN_DEFS }  from "./terrain";
+import { STRUCTURES }    from "./structures";
 
 export function bootstrapContent(): void {
   registry.registerItems(ITEMS);
@@ -23,11 +24,12 @@ export function bootstrapContent(): void {
   registry.registerFeatures(FEATURES);
   registry.registerTechs(TECHS);
   registry.registerTerrains(TERRAIN_DEFS);
+  registry.registerStructures(STRUCTURES);
 
   console.info(
     `[Content] Registered: ${ITEMS.length} items, ` +
     `${RECIPES.length} recipes, ${DOODADS.length} doodads, ` +
     `${FEATURES.length} features, ${TECHS.length} techs, ` +
-    `${TERRAIN_DEFS.length} terrains.`
+    `${TERRAIN_DEFS.length} terrains, ${STRUCTURES.length} structures.`
   );
 }

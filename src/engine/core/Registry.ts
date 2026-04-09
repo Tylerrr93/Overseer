@@ -6,7 +6,7 @@
 //  files directly.
 // ============================================================
 
-import type { ItemDef, RecipeDef, DoodadDef, FeatureDef, TechDef, TerrainDef } from "@t/content";
+import type { ItemDef, RecipeDef, DoodadDef, FeatureDef, TechDef, TerrainDef, StructureDef } from "@t/content";
 
 export class Registry {
   private readonly items        = new Map<string, ItemDef>();
@@ -15,6 +15,7 @@ export class Registry {
   private readonly features     = new Map<string, FeatureDef>();
   private readonly techs        = new Map<string, TechDef>();
   private readonly terrains     = new Map<string, TerrainDef>();
+  private readonly structures   = new Map<string, StructureDef>();
   /** Reverse index: doodadId → the ItemDef whose placesDoodadId matches it. */
   private readonly itemByDoodad = new Map<string, ItemDef>();
 
@@ -65,14 +66,22 @@ export class Registry {
     this.terrains.set(def.id, Object.freeze(def));
   }
 
+  registerStructure(def: StructureDef): void {
+    if (this.structures.has(def.id)) {
+      throw new Error(`[Registry] Duplicate structure id: "${def.id}"`);
+    }
+    this.structures.set(def.id, Object.freeze(def));
+  }
+
   // -- Bulk helpers for content files -------------------------
 
-  registerItems(defs: ItemDef[]): void         { defs.forEach(d => this.registerItem(d)); }
-  registerRecipes(defs: RecipeDef[]): void     { defs.forEach(d => this.registerRecipe(d)); }
-  registerDoodads(defs: DoodadDef[]): void     { defs.forEach(d => this.registerDoodad(d)); }
-  registerFeatures(defs: FeatureDef[]): void   { defs.forEach(d => this.registerFeature(d)); }
-  registerTechs(defs: TechDef[]): void         { defs.forEach(d => this.registerTech(d)); }
-  registerTerrains(defs: TerrainDef[]): void   { defs.forEach(d => this.registerTerrain(d)); }
+  registerItems(defs: ItemDef[]): void           { defs.forEach(d => this.registerItem(d)); }
+  registerRecipes(defs: RecipeDef[]): void       { defs.forEach(d => this.registerRecipe(d)); }
+  registerDoodads(defs: DoodadDef[]): void       { defs.forEach(d => this.registerDoodad(d)); }
+  registerFeatures(defs: FeatureDef[]): void     { defs.forEach(d => this.registerFeature(d)); }
+  registerTechs(defs: TechDef[]): void           { defs.forEach(d => this.registerTech(d)); }
+  registerTerrains(defs: TerrainDef[]): void     { defs.forEach(d => this.registerTerrain(d)); }
+  registerStructures(defs: StructureDef[]): void { defs.forEach(d => this.registerStructure(d)); }
 
   // -- Lookups (strict — throw if missing) --------------------
 
@@ -114,12 +123,13 @@ export class Registry {
 
   // -- Optional lookups (return undefined) --------------------
 
-  findItem(id: string): ItemDef | undefined         { return this.items.get(id); }
-  findRecipe(id: string): RecipeDef | undefined     { return this.recipes.get(id); }
-  findDoodad(id: string): DoodadDef | undefined     { return this.doodads.get(id); }
-  findFeature(id: string): FeatureDef | undefined   { return this.features.get(id); }
-  findTech(id: string): TechDef | undefined         { return this.techs.get(id); }
-  findTerrain(id: string): TerrainDef | undefined   { return this.terrains.get(id); }
+  findItem(id: string): ItemDef | undefined           { return this.items.get(id); }
+  findRecipe(id: string): RecipeDef | undefined       { return this.recipes.get(id); }
+  findDoodad(id: string): DoodadDef | undefined       { return this.doodads.get(id); }
+  findFeature(id: string): FeatureDef | undefined     { return this.features.get(id); }
+  findTech(id: string): TechDef | undefined           { return this.techs.get(id); }
+  findTerrain(id: string): TerrainDef | undefined     { return this.terrains.get(id); }
+  findStructure(id: string): StructureDef | undefined { return this.structures.get(id); }
 
   /**
    * Returns the ItemDef whose `placesDoodadId` matches `doodadId`, or
@@ -136,12 +146,13 @@ export class Registry {
     return [...this.recipes.values()].filter(r => r.machineTag === machineTag);
   }
 
-  allItems():    Readonly<Map<string, ItemDef>>      { return this.items; }
-  allRecipes():  Readonly<Map<string, RecipeDef>>    { return this.recipes; }
-  allDoodads():  Readonly<Map<string, DoodadDef>>    { return this.doodads; }
-  allFeatures(): Readonly<Map<string, FeatureDef>>   { return this.features; }
-  allTechs():    Readonly<Map<string, TechDef>>      { return this.techs; }
-  allTerrains(): Readonly<Map<string, TerrainDef>>   { return this.terrains; }
+  allItems():      Readonly<Map<string, ItemDef>>        { return this.items; }
+  allRecipes():    Readonly<Map<string, RecipeDef>>      { return this.recipes; }
+  allDoodads():    Readonly<Map<string, DoodadDef>>      { return this.doodads; }
+  allFeatures():   Readonly<Map<string, FeatureDef>>     { return this.features; }
+  allTechs():      Readonly<Map<string, TechDef>>        { return this.techs; }
+  allTerrains():   Readonly<Map<string, TerrainDef>>     { return this.terrains; }
+  allStructures(): Readonly<Map<string, StructureDef>>   { return this.structures; }
 
   // -- Starter helpers (called by StateManager at new-game init) --
 

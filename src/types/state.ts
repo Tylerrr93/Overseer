@@ -21,6 +21,13 @@ export interface TilePos  { tx: number; ty: number; }
 export type TileType =
   | "void" | "ground" | "rubble" | "water"
   | "rock" | "irradiated" | "organic"
+  // Road surfaces — placed by WorldGen road pass
+  | "asphalt_clean"    // intact highway surface
+  | "asphalt_cracked"  // worn local street
+  | "highway_line"     // highway with faded centre markings
+  // Ruin interiors — placed by WorldGen structure pass
+  | "ruin_floor"       // cracked concrete interior floor
+  | "ruined_wall"      // crumbled load-bearing wall (impassable)
   // Legacy ore tile types — kept for save compatibility only.
   // New world gen does not produce these; use FeatureState instead.
   | "ore_iron" | "ore_copper" | "ore_coal";
