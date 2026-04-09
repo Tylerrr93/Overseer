@@ -135,6 +135,12 @@ export class Renderer {
   private seenDetailChunks    = new Set<string>();
   /** texture path → set of "tx,ty" keys that use it (for fast invalidation) */
   private tileDetailByTexture = new Map<string, Set<string>>();
+  /**
+   * Cache of per-label-string textures used during chunk baking.
+   * Created once per unique label (e.g. "~", "#") then reused.
+   * Never added to the scene graph directly — only baked into chunk RTs.
+   */
+  private labelTexCache = new Map<string, PIXI.Texture>();
 
   // ── Feature sync ──────────────────────────────────────────
   /** "tx,ty" → Container holding the visual (Graphics, Sprite, or AnimatedSprite) */
@@ -295,6 +301,26 @@ export class Renderer {
   //  first encounter.  Budget: max 2 new chunks per frame to
   //  avoid frame-time spikes during exploration.
 
+  /**
+   * Returns a tiny cached Texture for an ASCII label string.
+   * At most one Texture is created per unique label character(s)
+   * regardless of how many tiles share that label.  The texture is
+   * never added to the scene graph — it is only stamped into baked
+   * chunk RenderTextures.
+   */
+  private getLabelTex(label: string): PIXI.Texture {
+    const cached = this.labelTexCache.get(label);
+    if (cached) return cached;
+    const txt = new PIXI.Text({
+      text:  label,
+      style: { fontFamily: "monospace", fontSize: 9, fontWeight: "bold", fill: "#cccccc" },
+    });
+    const tex = this.app.renderer.generateTexture({ target: txt });
+    txt.destroy();
+    this.labelTexCache.set(label, tex);
+    return tex;
+  }
+
   private syncTiles(): void {
     let budget = 2;
     for (const [key, chunk] of Object.entries(sm.state.chunks)) {
@@ -304,7 +330,15 @@ export class Renderer {
       this.seenChunks.add(key);
       const chunkPx = CS * T;
 
+      // Build a temporary container:
+      //   gfx  — all colour-fill rectangles (one rect per tile)
+      //   label sprites — one Sprite per labeled tile, using cached label textures
+      // The whole container is baked into one RenderTexture then destroyed.
+      // After baking, zero persistent objects remain in the scene graph.
+      const container = new PIXI.Container();
       const gfx = new PIXI.Graphics();
+      container.addChild(gfx);
+
       for (let ty = 0; ty < CS; ty++) {
         for (let tx = 0; tx < CS; tx++) {
           const tile = chunk.tiles[ty]?.[tx];
@@ -314,13 +348,31 @@ export class Renderer {
             ? hexToNum(terrainDef.sprite)
             : TILE_COLOR_FALLBACK;
           gfx.rect(tx * T, ty * T, T, T).fill(color);
+
+          if (terrainDef?.label) {
+            const labelTex = this.getLabelTex(terrainDef.label);
+            const spr      = new PIXI.Sprite(labelTex);
+            spr.anchor.set(0.5, 0.5);
+            spr.x     = tx * T + T / 2;
+            spr.y     = ty * T + T / 2;
+            spr.alpha = 0.45;
+            container.addChild(spr);
+          }
         }
       }
+
       const rt = this.app.renderer.generateTexture({
-        target: gfx,
+        target: container,
         frame:  new PIXI.Rectangle(0, 0, chunkPx, chunkPx),
       });
+
+      // Destroy all temporary bake objects.
+      // Sprites are destroyed with texture:false so the cached label
+      // textures in labelTexCache survive for future chunk bakes.
       gfx.destroy();
+      const children = container.removeChildren() as PIXI.Sprite[];
+      for (const c of children) c.destroy({ texture: false });
+      container.destroy();
 
       const sprite = new PIXI.Sprite(rt);
       sprite.x = chunk.cx * CS * T;

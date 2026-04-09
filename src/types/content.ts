@@ -108,6 +108,14 @@ export interface TerrainDef {
    * Example: { idle: ["assets/ground_1.png", "assets/ground_2.png"] }
    */
   animations?: Record<string, string[]>;
+  /**
+   * Optional 1–2 character ASCII tag rendered as a small centred
+   * overlay on every tile of this type (e.g. "~" for water, "=" for
+   * highway).  Purely cosmetic — helps distinguish tile types before
+   * real art is added.  Omit for common/background tiles like ground
+   * to reduce visual noise.
+   */
+  label?: string;
 }
 
 // ── Tech tree ─────────────────────────────────────────────────

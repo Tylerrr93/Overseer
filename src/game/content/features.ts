@@ -16,62 +16,62 @@ export const FEATURES: FeatureDef[] = [
   // ── Scrap deposit ────────────────────────────────────────────
   //  Common ambient ruins — the bedrock of early-game bootstrapping.
   //  Infinite so the player is never stuck with zero material.
+  //  Brighter sprite so it reads clearly against dark ground.
   {
     id:            "scrap_deposit",
     name:          "Scrap Deposit",
-    sprite:        "#6a6a5a",
+    sprite:        "#8a8070",   // warmer grey — more visible on dark ground
     texture:       "assets/scrap_metal.png",
     yieldsItemId:  "scrap_metal",
-    baseYield:     3,        // tiny piles
-    infinite:      true,     // ambient ruins — never runs dry
-    sparsity:      0.76,     // moderately common — scattered everywhere
-    clusterSize:   1,        // single tiles, no cluster
+    baseYield:     3,
+    infinite:      true,
+    sparsity:      0.72,        // generous — ambient ruin litter everywhere
+    clusterSize:   2,           // small patches, not lone tiles
     extractorTag:  "extractor_scrap",
     harvestTimeMs: 1800,
   },
 
   // ── Iron vein ────────────────────────────────────────────────
-  //  Collapsed infrastructure ore.  Extremely rare on the surface;
-  //  each find is a major milestone.  Larger yield to reward travel.
+  //  Scarce but discoverable — expect 1 per 3–4 chunks explored.
+  //  Bright rust-orange sprite stands out from terrain.
   {
     id:            "iron_vein",
     name:          "Iron Vein",
-    sprite:        "#7a4a3a",
+    sprite:        "#c4603a",   // vivid rust-orange — clearly visible
     yieldsItemId:  "iron_ore",
-    baseYield:     1400,     // big haul — worth the expedition
-    sparsity:      0.974,    // ~1 vein per very large area
-    clusterSize:   2,        // small tight cluster
+    baseYield:     1400,
+    sparsity:      0.952,       // rare — roughly 1 per 3 chunks
+    clusterSize:   2,
     extractorTag:  "extractor_iron",
     harvestTimeMs: 2500,
   },
 
   // ── Copper vein ──────────────────────────────────────────────
-  //  Even rarer than iron — critical for electronics.
-  //  The player may need to scout 10+ chunks before finding one.
+  //  Rarer than iron.  Vivid verdigris-green so the player can spot
+  //  it from a distance when exploring.
   {
     id:            "copper_vein",
     name:          "Copper Vein",
-    sprite:        "#b87333",
+    sprite:        "#4aaa6a",   // vivid teal-green — unmistakable
     yieldsItemId:  "copper_ore",
     baseYield:     1100,
-    sparsity:      0.980,    // rarest ore — extremely precious
+    sparsity:      0.963,       // rarer than iron — ~1 per 5 chunks
     clusterSize:   2,
     extractorTag:  "extractor_copper",
     harvestTimeMs: 2500,
   },
 
   // ── Coal seam ────────────────────────────────────────────────
-  //  Primary fuel source and carbon feedstock.  Still scarce but
-  //  slightly more findable than metal ores — the player needs coal
-  //  first to power early machinery.
+  //  The most findable ore — player needs it first to run machinery.
+  //  Deep black tile reads distinctly against all terrain types.
   {
     id:            "coal_seam",
     name:          "Coal Seam",
-    sprite:        "#2a2a2a",
+    sprite:        "#404040",   // medium-dark grey — distinct from near-black ground
     yieldsItemId:  "coal",
-    baseYield:     2200,     // large reserves — sustains early industry
-    sparsity:      0.968,    // rare but findable before ores
-    clusterSize:   3,        // slightly larger patches
+    baseYield:     2200,
+    sparsity:      0.944,       // most common ore — ~1 per 2 chunks
+    clusterSize:   3,
     extractorTag:  "extractor_coal",
     harvestTimeMs: 2000,
   },

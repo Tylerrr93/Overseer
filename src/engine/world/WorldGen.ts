@@ -1,35 +1,36 @@
 // ============================================================
 //  src/engine/world/WorldGen.ts
-//  Procedural chunk generator — v3 (biomes + roads + structures)
+//  Procedural chunk generator — v4 (warped-grid roads)
+//
+//  Road system — domain-warped rectilinear grid
+//  ─────────────────────────────────────────────
+//  Previous ridge-noise roads followed arbitrary contour lines and
+//  produced "wavy messes".  Real city roads are axis-aligned grids
+//  with organic damage/settling.  The new system:
+//
+//    1. Highways (all biomes) — E/W runs spaced ~HWY_H_SPACING tiles
+//       apart; N/S runs spaced ~HWY_V_SPACING tiles apart.  Each run
+//       is 3 tiles wide (centre = highway_line, flanks = asphalt_clean).
+//       A smooth warp field (scale 40, ±HWY_WARP tiles) curves the
+//       grid gently without breaking its rectilinear character.
+//
+//    2. City streets (city biome only) — finer grid (STR_*_SPACING),
+//       1 tile wide (asphalt_cracked).  Slightly more warp than highways.
+//       Creates recognisable city blocks.
 //
 //  Noise layer stack (back → front priority):
 //
-//    macroNoise   (scale 80)  — city/ruins vs rural/wasteland biomes.
-//                               Values > CITY_THRESHOLD produce dense
-//                               urban zones with roads and structures.
-//
-//    waterNoise   (scale 20)  — large coherent water bodies (highest
-//                               priority — roads and structures never
-//                               spawn on water).
-//
-//    radNoise     (scale 14)  — irradiated crater zones.
-//
-//    ridgeHighway (scale 50)  — ridge noise that carves long, winding
-//                               highway corridors connecting city blobs.
-//                               Active across ALL biomes.
-//
-//    ridgeStreet  (scale 18)  — finer ridge noise for local streets.
-//                               Only active inside city biomes.
-//
-//    baseNoise    (scale 10)  — base terrain shape (rock / rubble /
-//                               ground / organic) used as a fallback
-//                               inside non-road, non-structure tiles.
+//    waterNoise  (scale 22) — impassable water (always wins)
+//    radNoise    (scale 12) — irradiated patches
+//    highway     — warped modular grid, all biomes
+//    streets     — warped modular grid, city biome only
+//    macroNoise  (scale 30) — city vs rural fallback terrain
+//    baseNoise   (scale 10) — rock / rubble / organic detail
 //
 //  Pass order per chunk:
-//    1. Tile pass   — generateTile() applies all noise layers to each tile.
-//    2. Structure pass — stamps StructureDef blueprints from the Registry
-//                        into city-biome local-maxima, writes DoodadStates.
-//    3. Feature pass  — scatters resource nodes, skipping roads/walls/water.
+//    1. Tile pass     — generateTile() writes terrain + roads.
+//    2. Structure pass — stamps blueprints at city macro-peaks.
+//    3. Feature pass  — scatters resources, skips roads/walls/water.
 // ============================================================
 
 import type { Chunk, Tile, FeatureState, TileType, DoodadState } from "@t/state";
@@ -86,41 +87,44 @@ function valueNoise(wx: number, wy: number, seed: number, scale: number): number
   return top + ty * (bottom - top);
 }
 
-/**
- * Ridge noise — transforms value noise into sharp linear ridges.
- * Output is 1.0 at the ridge centre and falls toward 0 at the flanks.
- * formula:  1 - |2n - 1|   (spike at n = 0.5 of the underlying noise)
- */
-function ridgeNoise(wx: number, wy: number, seed: number, scale: number): number {
-  const n = valueNoise(wx, wy, seed, scale);
-  return 1.0 - Math.abs(2 * n - 1);
-}
+// ── Noise seeds ───────────────────────────────────────────────
+//  Each layer XORs the world seed so features never perfectly align.
 
-// ── Noise seeds & thresholds ──────────────────────────────────
-//  Each layer uses a unique bitwise XOR of the world seed so that
-//  different resources and biomes never perfectly co-locate.
+const SEED_WATER      = 0xAABBCCDD;
+const SEED_RAD        = 0xCAFEBABE;
+const SEED_MACRO      = 0xDEADBEEF;
 
-const SEED_WATER    = 0xAABBCCDD;
-const SEED_RAD      = 0xCAFEBABE;
-const SEED_MACRO    = 0xDEADBEEF;  // city / rural macro-biome
-const SEED_HIGHWAY  = 0x12345678;  // highway ridge corridors
-const SEED_STREET   = 0x87654321;  // local-street ridge network
+// Warp-field seeds (one per road axis per direction)
+const SEED_HWY_WARP_H = 0x11223344;  // warp Y-position of E-W highways
+const SEED_HWY_WARP_V = 0x55667788;  // warp X-position of N-S highways
+const SEED_STR_WARP_H = 0x99AABBCC;  // warp Y-position of E-W streets
+const SEED_STR_WARP_V = 0xDDEEFF00;  // warp X-position of N-S streets
 
-// Noise scales
-const SCALE_BASE    = 10;
-const SCALE_WATER   = 20;
-const SCALE_RAD     = 14;
-const SCALE_MACRO   = 80;
-const SCALE_HIGHWAY = 50;
-const SCALE_STREET  = 18;
+// ── Noise scales ──────────────────────────────────────────────
+const SCALE_BASE  = 10;
+const SCALE_WATER = 22;
+const SCALE_RAD   = 12;
+const SCALE_MACRO = 30;   // city blobs every ~30 tiles
 
-// Biome threshold — macroNoise > this is "city / ruins" territory
-const CITY_THRESHOLD = 0.52;
+// ── Biome threshold ───────────────────────────────────────────
+const CITY_THRESHOLD = 0.46;   // macroNoise > this → city/ruins biome
 
-// Road thresholds (ridge noise 0–1, higher = narrower corridor)
-const HIGHWAY_THRESHOLD        = 0.90;  // all biomes — main arteries
-const HIGHWAY_CENTRE_THRESHOLD = 0.93;  // sub-threshold for centre-line tile
-const STREET_THRESHOLD         = 0.87;  // city only — local streets
+// ── Highway grid (active in ALL biomes) ──────────────────────
+//  Two independent spacings prevent perfectly square blocks.
+//  HWY_WIDTH = 3: flank | centre-line | flank
+const HWY_H_SPACING = 48;   // tiles between E-W highway runs
+const HWY_V_SPACING = 44;   // tiles between N-S highway runs
+const HWY_WIDTH     = 3;    // tiles wide per highway
+const HWY_WARP      = 4.5;  // max ± tile deviation from grid
+const HWY_WARP_SCALE= 40;   // how slowly the warp field changes
+
+// ── Street grid (CITY biome only) ────────────────────────────
+//  Different H vs V spacings create irregular city block shapes.
+const STR_H_SPACING = 16;   // tiles between E-W streets
+const STR_V_SPACING = 13;   // tiles between N-S streets
+const STR_WIDTH     = 1;    // 1 tile wide
+const STR_WARP      = 2.5;  // max ± tile deviation
+const STR_WARP_SCALE= 18;   // warp scale
 
 // Tile types that block feature spawning
 const ROAD_AND_RUIN_TYPES = new Set<TileType>([
@@ -130,56 +134,83 @@ const ROAD_AND_RUIN_TYPES = new Set<TileType>([
 
 // ── Tile generation ───────────────────────────────────────────
 
+/**
+ * Positive modulo — always returns a value in [0, m).
+ * JS % can return negative values for negative operands.
+ */
+function pmod(n: number, m: number): number {
+  return ((n % m) + m) % m;
+}
+
+/**
+ * Sample the domain-warp field for one axis.
+ * Returns a displacement in tiles in the range [-warpAmt, +warpAmt].
+ * Using a large noise scale keeps the warp smooth so roads stay
+ * connected — adjacent tiles get nearly the same warp value.
+ */
+function warp(wx: number, wy: number, seed: number, scale: number, amt: number): number {
+  return (valueNoise(wx, wy, seed, scale) - 0.5) * 2 * amt;
+}
+
 function generateTile(wx: number, wy: number, seed: number): Tile {
-  const baseNoise    = valueNoise(wx, wy, seed,                    SCALE_BASE);
-  const waterNoise   = valueNoise(wx, wy, (seed ^ SEED_WATER) >>> 0, SCALE_WATER);
-  const radNoise     = valueNoise(wx, wy, (seed ^ SEED_RAD)   >>> 0, SCALE_RAD);
-  const macroNoise   = valueNoise(wx, wy, (seed ^ SEED_MACRO)  >>> 0, SCALE_MACRO);
-  const rHighway     = ridgeNoise(wx, wy, (seed ^ SEED_HIGHWAY) >>> 0, SCALE_HIGHWAY);
-  const rStreet      = ridgeNoise(wx, wy, (seed ^ SEED_STREET)  >>> 0, SCALE_STREET);
+  const baseNoise  = valueNoise(wx, wy, seed,                     SCALE_BASE);
+  const waterNoise = valueNoise(wx, wy, (seed ^ SEED_WATER) >>> 0, SCALE_WATER);
+  const radNoise   = valueNoise(wx, wy, (seed ^ SEED_RAD)   >>> 0, SCALE_RAD);
+  const macroNoise = valueNoise(wx, wy, (seed ^ SEED_MACRO)  >>> 0, SCALE_MACRO);
+  const isCity     = macroNoise > CITY_THRESHOLD;
 
-  const isCity = macroNoise > CITY_THRESHOLD;
-
-  // ── Water (highest priority — no roads or structures here) ──
-  if (waterNoise < 0.10) {
-    return { type: "water", doodadId: null, passable: false };
-  }
+  // ── Water (highest priority) ─────────────────────────────────
+  if (waterNoise < 0.10) return { type: "water", doodadId: null, passable: false };
 
   // ── Irradiated zones ─────────────────────────────────────────
-  if (radNoise > 0.86 && baseNoise > 0.3) {
-    return { type: "irradiated", doodadId: null, passable: true };
-  }
+  if (radNoise > 0.86 && baseNoise > 0.3) return { type: "irradiated", doodadId: null, passable: true };
 
-  // ── Highways (cross all non-water biomes) ────────────────────
-  //  Highways override rock / rubble / organic but never water.
-  //  Centre tiles get the highway_line tile; flanks get asphalt_clean.
-  if (rHighway > HIGHWAY_THRESHOLD) {
-    const type: TileType = rHighway > HIGHWAY_CENTRE_THRESHOLD
-      ? "highway_line"
-      : "asphalt_clean";
+  // ── Warped-grid highways (all biomes, never on water) ────────
+  //  E-W runs: check warped Y against a repeating band.
+  //  N-S runs: check warped X against a repeating band.
+  //  HWY_WIDTH = 3 tiles: [0,1) = flank, [1,2) = centre-line, [2,3) = flank.
+  const hwyWarpH  = warp(wx, wy, (seed ^ SEED_HWY_WARP_H) >>> 0, HWY_WARP_SCALE, HWY_WARP);
+  const hwyWarpV  = warp(wx, wy, (seed ^ SEED_HWY_WARP_V) >>> 0, HWY_WARP_SCALE, HWY_WARP);
+  const hwyPosH   = pmod(wy + hwyWarpH, HWY_H_SPACING);   // position within E-W band
+  const hwyPosV   = pmod(wx + hwyWarpV, HWY_V_SPACING);   // position within N-S band
+  const isHwyH    = hwyPosH < HWY_WIDTH;
+  const isHwyV    = hwyPosV < HWY_WIDTH;
+
+  if (isHwyH || isHwyV) {
+    // Intersection → always centre-line tile
+    if (isHwyH && isHwyV) return { type: "highway_line", doodadId: null, passable: true };
+    // Single run: middle tile is the painted centre line, flanks are plain asphalt
+    const pos          = isHwyH ? hwyPosH : hwyPosV;
+    const isCentre     = pos >= 1 && pos < 2;
+    const type: TileType = isCentre ? "highway_line" : "asphalt_clean";
     return { type, doodadId: null, passable: true };
   }
 
-  // ── Local streets (city biome only) ──────────────────────────
-  if (isCity && rStreet > STREET_THRESHOLD) {
-    return { type: "asphalt_cracked", doodadId: null, passable: true };
+  // ── Warped-grid city streets (city biome only) ────────────────
+  //  1-tile-wide, slightly more warped than highways.
+  //  Different H/V spacings create irregular block shapes.
+  if (isCity) {
+    const strWarpH = warp(wx, wy, (seed ^ SEED_STR_WARP_H) >>> 0, STR_WARP_SCALE, STR_WARP);
+    const strWarpV = warp(wx, wy, (seed ^ SEED_STR_WARP_V) >>> 0, STR_WARP_SCALE, STR_WARP);
+    const strPosH  = pmod(wy + strWarpH, STR_H_SPACING);
+    const strPosV  = pmod(wx + strWarpV, STR_V_SPACING);
+    if (strPosH < STR_WIDTH || strPosV < STR_WIDTH) {
+      return { type: "asphalt_cracked", doodadId: null, passable: true };
+    }
   }
 
   // ── City biome terrain ────────────────────────────────────────
-  //  More rubble and collapsed structures than the open wasteland.
-  //  Higher ground resolves to ruin_floor — the ghostly imprint of
-  //  flattened buildings.
   if (isCity) {
-    if (baseNoise < 0.20) return { type: "rock",       doodadId: null, passable: true  };
-    if (baseNoise < 0.42) return { type: "rubble",     doodadId: null, passable: true  };
-    return                       { type: "ruin_floor", doodadId: null, passable: true  };
+    if (baseNoise < 0.20) return { type: "rock",       doodadId: null, passable: true };
+    if (baseNoise < 0.42) return { type: "rubble",     doodadId: null, passable: true };
+    return                       { type: "ruin_floor", doodadId: null, passable: true };
   }
 
   // ── Rural / wasteland terrain ─────────────────────────────────
-  if (baseNoise < 0.18) return { type: "rock",     doodadId: null, passable: true };
-  if (baseNoise < 0.30) return { type: "rubble",   doodadId: null, passable: true };
-  if (baseNoise > 0.78) return { type: "organic",  doodadId: null, passable: true };
-  return                       { type: "ground",   doodadId: null, passable: true };
+  if (baseNoise < 0.18) return { type: "rock",    doodadId: null, passable: true };
+  if (baseNoise < 0.30) return { type: "rubble",  doodadId: null, passable: true };
+  if (baseNoise > 0.78) return { type: "organic", doodadId: null, passable: true };
+  return                       { type: "ground",  doodadId: null, passable: true };
 }
 
 // ── Structure placement pass ──────────────────────────────────
@@ -212,12 +243,13 @@ function generateStructures(
   const doodads: DoodadState[] = [];
 
   // ── Step 1: find candidate positions (city-zone local maxima) ─
-  //  We sample every STEP tiles and retain local maxima within a
-  //  RADIUS neighbourhood.  This keeps candidate density low enough
-  //  to avoid over-building while letting 1–2 structures fit per chunk.
+  //  STEP: sample grid spacing.  RADIUS: neighbourhood for local-max
+  //  check.  With SCALE_MACRO=30, noise varies ~0.25 per chunk, so a
+  //  RADIUS of 4 is enough to find clean peaks.  STEP=4 gives 4×4=16
+  //  candidate positions per chunk instead of the previous 3×3=9.
 
-  const STEP   = 5;
-  const RADIUS = 6;
+  const STEP   = 4;
+  const RADIUS = 4;
 
   type Candidate = { lx: number; ly: number; macroN: number };
   const candidates: Candidate[] = [];
@@ -228,8 +260,8 @@ function generateStructures(
       const wy     = cy * CS + ly;
       const macroN = valueNoise(wx, wy, macroSeed, SCALE_MACRO);
 
-      // Only dense city zones qualify
-      if (macroN < CITY_THRESHOLD + 0.06) continue;
+      // Only city zones qualify (CITY_THRESHOLD=0.46; +0.04 = 0.50)
+      if (macroN < CITY_THRESHOLD + 0.04) continue;
 
       // Skip water tiles
       if (tiles[ly]?.[lx]?.type === "water") continue;
