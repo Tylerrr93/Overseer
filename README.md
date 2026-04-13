@@ -1,4 +1,4 @@
-# Digitized Overseer
+# Overseer
 
 A post-apocalyptic factory automation sandbox set on a ruined Earth. Hand-harvest scarce resource nodes, build extractors, smelt ore, wire up a power grid, and automate production lines — all running in a PixiJS v8 WebGL renderer deployed to GitHub Pages.
 
